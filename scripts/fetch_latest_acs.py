@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Fetch latest ACS summary files and compatible gazetteer files.
 
-This script downloads the specific raw files expected by geodata.Database:
+This script downloads the specific raw files expected by geocompare.Database:
 - ACS lookup file
 - ACS geography files (g<year>5*.csv)
 - ACS estimate sequence files (e<year>5*<seq>000.txt) for required tables

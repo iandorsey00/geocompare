@@ -2,11 +2,11 @@
 
 ## Runtime Layers
 
-- `geodata/interfaces`: CLI and GUI frontends.
-- `geodata/services`: service layer used by interfaces.
-- `geodata/engine`: orchestration and domain workflows.
-- `geodata/repository`: persistence and query acceleration.
-- `geodata/database`: ingest/build pipeline from Census source files.
+- `geocompare/interfaces`: CLI and GUI frontends.
+- `geocompare/services`: service layer used by interfaces.
+- `geocompare/engine`: orchestration and domain workflows.
+- `geocompare/repository`: persistence and query acceleration.
+- `geocompare/database`: ingest/build pipeline from Census source files.
 
 ## Persistence
 

@@ -1,6 +1,6 @@
 import sqlite3
 
-from geodata.repository.sqlite_repository import CURRENT_SCHEMA_VERSION, SQLiteRepository
+from geocompare.repository.sqlite_repository import CURRENT_SCHEMA_VERSION, SQLiteRepository
 
 
 class DummyProfile:

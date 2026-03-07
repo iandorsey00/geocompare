@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from geodata.identity.place_identity import PlaceIdentityIndex
+from geocompare.identity.place_identity import PlaceIdentityIndex
 
 
 def _dp(name, state, sumlevel, geoid, population):

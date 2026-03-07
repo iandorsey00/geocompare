@@ -3,7 +3,7 @@
 GeoCompare is a program that allows users to easily view and organized and
 processed demographic data without the need to modify any data files.
 
-See the [Wiki](https://github.com/iandorsey00/geodata/wiki) for documentation.
+See the [Wiki](https://github.com/iandorsey00/geocompare/wiki) for documentation.
 Architecture details: [doc/architecture.md](doc/architecture.md).
 Versioning policy: [doc/versioning.md](doc/versioning.md).
 
@@ -91,9 +91,9 @@ Run local quality checks:
 
 ```bash
 python3 -m pip install -e ".[dev]"
-ruff check tests geodata/identity geodata/repository/sqlite_repository.py geodata/interfaces/cli.py scripts/benchmark_queries.py
-black --check tests geodata/identity geodata/repository/sqlite_repository.py geodata/interfaces/cli.py scripts/benchmark_queries.py
-mypy geodata/identity geodata/repository/sqlite_repository.py geodata/interfaces/cli.py
+ruff check tests geocompare/identity geocompare/repository/sqlite_repository.py geocompare/interfaces/cli.py scripts/benchmark_queries.py
+black --check tests geocompare/identity geocompare/repository/sqlite_repository.py geocompare/interfaces/cli.py scripts/benchmark_queries.py
+mypy geocompare/identity geocompare/repository/sqlite_repository.py geocompare/interfaces/cli.py
 pytest -q
 ```
 

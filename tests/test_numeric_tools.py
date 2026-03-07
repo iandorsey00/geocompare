@@ -1,8 +1,8 @@
 import numpy as np
 
-from geodata.tools.geodata_safedivision import gdsd
-from geodata.tools.geodata_typecast import gdt, gdtf, gdti
-from geodata.tools.numeric import parse_float, parse_int, parse_number, safe_divide
+from geocompare.tools.geodata_safedivision import gdsd
+from geocompare.tools.geodata_typecast import gdt, gdtf, gdti
+from geocompare.tools.numeric import parse_float, parse_int, parse_number, safe_divide
 
 
 def test_parse_number_tolerant_cleanup():

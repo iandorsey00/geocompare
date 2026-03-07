@@ -1,3 +1,5 @@
-from geodata.services.query_service import QueryService
+from geocompare.engine import Engine
 
-__all__ = ["QueryService"]
+
+class QueryService(Engine):
+    '''Backward-compatible service facade over Engine.'''

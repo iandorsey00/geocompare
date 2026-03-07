@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from geodata.database.Database import Database
+from geocompare.database.Database import Database
 
 
 class FakeDP:

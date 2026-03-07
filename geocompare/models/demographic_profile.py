@@ -1,3 +1,3 @@
-from geodata.models.demographic_profile import DemographicProfile
+from geocompare.datainterface.DemographicProfile import DemographicProfile
 
-__all__ = ["DemographicProfile"]
+__all__ = ['DemographicProfile']

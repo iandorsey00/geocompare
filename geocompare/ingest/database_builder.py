@@ -1,3 +1,3 @@
-from geodata.ingest.database_builder import DatabaseBuilder
+from geocompare.database.Database import Database as DatabaseBuilder
 
-__all__ = ["DatabaseBuilder"]
+__all__ = ['DatabaseBuilder']
