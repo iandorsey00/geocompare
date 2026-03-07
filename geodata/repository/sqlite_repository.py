@@ -10,11 +10,15 @@ from pathlib import Path
 from rapidfuzz import fuzz
 
 try:
-    from geodata.repository.base import DataRepository
-    from geodata.repository.pickle_compat import compat_loads
+    from geocompare.repository.base import DataRepository
+    from geocompare.repository.pickle_compat import compat_loads
 except ImportError:  # pragma: no cover - script execution fallback
-    from repository.base import DataRepository
-    from repository.pickle_compat import compat_loads
+    try:
+        from geodata.repository.base import DataRepository
+        from geodata.repository.pickle_compat import compat_loads
+    except ImportError:  # pragma: no cover - script execution fallback
+        from repository.base import DataRepository
+        from repository.pickle_compat import compat_loads
 
 CURRENT_SCHEMA_VERSION = 1
 

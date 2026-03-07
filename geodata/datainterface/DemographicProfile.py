@@ -5,11 +5,15 @@ geographies.
 
 # pylint: disable=import-error
 try:
-    from geodata.tools.geodata_typecast import gdt, gdti, gdtf
-    from geodata.tools.CountyTools import CountyTools
+    from geocompare.tools.geodata_typecast import gdt, gdti, gdtf
+    from geocompare.tools.CountyTools import CountyTools
 except ImportError:  # pragma: no cover - script execution fallback
-    from tools.geodata_typecast import gdt, gdti, gdtf
-    from tools.CountyTools import CountyTools
+    try:
+        from geodata.tools.geodata_typecast import gdt, gdti, gdtf
+        from geodata.tools.CountyTools import CountyTools
+    except ImportError:  # pragma: no cover - script execution fallback
+        from tools.geodata_typecast import gdt, gdti, gdtf
+        from tools.CountyTools import CountyTools
 import textwrap
 import sys
 import csv
@@ -48,11 +52,14 @@ class DemographicProfile:
         # Population category
         self.rl['population'] = 'Total population'
         self.rl['population_density'] = 'Population density'
+        self.rl['under_18'] = 'Population under 18'
+        self.rl['age_65_plus'] = 'Population 65 and over'
 
         # Geography category
         self.rl['land_area'] = 'Land area'
         self.rl['latitude'] = 'Latitude'
         self.rl['longitude'] = 'Longitude'
+        self.rl['median_age'] = 'Median age'
 
         # Race category
         self.rl['white_alone'] = 'White alone'
@@ -72,8 +79,15 @@ class DemographicProfile:
         # Income category
         self.rl['per_capita_income'] = 'Per capita income'
         self.rl['median_household_income'] = 'Median household income'
+        self.rl['population_below_poverty_level'] = 'Population below poverty level'
+        self.rl['labor_force'] = 'Civilian labor force'
+        self.rl['unemployed_population'] = 'Unemployed population'
+        self.rl['households'] = 'Total households'
 
         # Housing category
+        self.rl['average_household_size'] = 'Average household size'
+        self.rl['occupied_housing_units'] = 'Occupied housing units'
+        self.rl['homeowner_occupied_housing_units'] = 'Owner-occupied housing units'
         self.rl['median_year_structure_built'] = 'Median year unit built'
         self.rl['median_rooms'] = 'Median rooms'
         self.rl['median_value'] = 'Median value'
@@ -87,11 +101,14 @@ class DemographicProfile:
         # Population category
         self.ind['population'] = 0
         self.ind['population_density'] = 0
+        self.ind['under_18'] = 0
+        self.ind['age_65_plus'] = 0
 
         # Geography category
         self.ind['land_area'] = 0
         self.ind['latitude'] = 0
         self.ind['longitude'] = 0
+        self.ind['median_age'] = 0
 
         # Race category
         self.ind['white_alone'] = 4
@@ -111,8 +128,15 @@ class DemographicProfile:
         # Income category
         self.ind['per_capita_income'] = 0
         self.ind['median_household_income'] = 0
+        self.ind['population_below_poverty_level'] = 0
+        self.ind['labor_force'] = 0
+        self.ind['unemployed_population'] = 2
+        self.ind['households'] = 0
 
         # Housing category
+        self.ind['average_household_size'] = 0
+        self.ind['occupied_housing_units'] = 0
+        self.ind['homeowner_occupied_housing_units'] = 2
         self.ind['median_year_structure_built'] = 0
         self.ind['median_rooms'] = 0
         self.ind['median_value'] = 0
@@ -130,7 +154,13 @@ class DemographicProfile:
         # row mode: nc=no compound, std=component+compound, co=compound only.
         self.display_sections = [
             ('GEOGRAPHY', [('nc', 'land_area')]),
-            ('POPULATION', [('nc', 'population'), ('co', 'population_density')]),
+            ('POPULATION', [
+                ('nc', 'population'),
+                ('co', 'population_density'),
+                ('std', 'under_18'),
+                ('std', 'age_65_plus'),
+            ]),
+            ('AGE', [('nc', 'median_age')]),
             ('  Race', [
                 ('std', 'white_alone'),
                 ('std', 'white_alone_not_hispanic_or_latino'),
@@ -145,9 +175,37 @@ class DemographicProfile:
                 ('std', 'graduate_degree_or_higher'),
             ]),
             ('INCOME', [('nc', 'per_capita_income'), ('nc', 'median_household_income')]),
+            ('ECONOMY', [
+                ('std', 'population_below_poverty_level'),
+                ('std', 'labor_force'),
+                ('std', 'unemployed_population'),
+                ('nc', 'households'),
+            ]),
             ('HOUSING', [
+                ('nc', 'average_household_size'),
+                ('nc', 'occupied_housing_units'),
+                ('std', 'homeowner_occupied_housing_units'),
                 ('nc', 'median_year_structure_built'),
                 ('nc', 'median_rooms'),
+                ('nc', 'median_value'),
+                ('nc', 'median_rent'),
+            ]),
+        ]
+        self.compact_display_sections = [
+            ('GEOGRAPHY', [('nc', 'land_area')]),
+            ('POPULATION', [
+                ('nc', 'population'),
+                ('co', 'population_density'),
+                ('std', 'under_18'),
+                ('std', 'age_65_plus'),
+            ]),
+            ('INCOME', [('nc', 'per_capita_income'), ('nc', 'median_household_income')]),
+            ('ECONOMY', [
+                ('std', 'population_below_poverty_level'),
+                ('std', 'unemployed_population'),
+            ]),
+            ('HOUSING', [
+                ('std', 'homeowner_occupied_housing_units'),
                 ('nc', 'median_value'),
                 ('nc', 'median_rent'),
             ]),
@@ -162,9 +220,22 @@ class DemographicProfile:
         self.rc['land_area'] = gdtf(db_row['ALAND_SQMI'])
         self.rc['latitude'] = gdtf(db_row['INTPTLAT'])
         self.rc['longitude'] = gdtf(db_row['INTPTLONG'])
+        self.rc['median_age'] = gdtf(db_row['B01002_1'])
 
         # Population category
         self.rc['population'] = gdt(db_row['B01003_1'])
+        self.rc['under_18'] = \
+            gdt(db_row['B01001_3']) + gdt(db_row['B01001_4']) \
+            + gdt(db_row['B01001_5']) + gdt(db_row['B01001_6']) \
+            + gdt(db_row['B01001_27']) + gdt(db_row['B01001_28']) \
+            + gdt(db_row['B01001_29']) + gdt(db_row['B01001_30'])
+        self.rc['age_65_plus'] = \
+            gdt(db_row['B01001_20']) + gdt(db_row['B01001_21']) \
+            + gdt(db_row['B01001_22']) + gdt(db_row['B01001_23']) \
+            + gdt(db_row['B01001_24']) + gdt(db_row['B01001_25']) \
+            + gdt(db_row['B01001_44']) + gdt(db_row['B01001_45']) \
+            + gdt(db_row['B01001_46']) + gdt(db_row['B01001_47']) \
+            + gdt(db_row['B01001_48']) + gdt(db_row['B01001_49'])
 
         # Race category
         self.rc['white_alone'] = gdt(db_row['B02001_2'])
@@ -191,8 +262,16 @@ class DemographicProfile:
         # Income category
         self.rc['per_capita_income'] = gdt(db_row['B19301_1'])
         self.rc['median_household_income'] = gdt(db_row['B19013_1'])
+        self.rc['poverty_universe'] = gdt(db_row['B17001_1'])
+        self.rc['population_below_poverty_level'] = gdt(db_row['B17001_2'])
+        self.rc['labor_force'] = gdt(db_row['B23025_3'])
+        self.rc['unemployed_population'] = gdt(db_row['B23025_5'])
+        self.rc['households'] = gdt(db_row['B11001_1'])
 
         # Housing category
+        self.rc['average_household_size'] = gdtf(db_row['B25010_1'])
+        self.rc['occupied_housing_units'] = gdt(db_row['B25003_1'])
+        self.rc['homeowner_occupied_housing_units'] = gdt(db_row['B25003_2'])
         self.rc['median_year_structure_built'] = gdt(db_row['B25035_1'])
         self.rc['median_rooms'] = gdt(db_row['B25018_1'])
         self.rc['median_value'] = gdt(db_row['B25077_1'])
@@ -205,11 +284,14 @@ class DemographicProfile:
         for key in self.rc.keys():
             if key not in ['per_capita_income', 'median_year_structure_built',
                 'median_value', 'median_rent', 'land_area',
-                'median_household_income']:
+                'median_household_income', 'median_age',
+                'average_household_size']:
                 self.fc[key] = f'{self.rc[key]:,}'
             elif key not in ['median_year_structure_built', 'land_area']:
                 if key == 'median_household_income' and self.rc[key] == 250001:
                     self.fc[key] = '$250,000+'
+                elif key in ['median_age', 'average_household_size']:
+                    self.fc[key] = f'{self.rc[key]:,.1f}'
                 else:
                     self.fc[key] = '$' + f'{self.rc[key]:,}'
             elif key == 'land_area':
@@ -245,6 +327,8 @@ class DemographicProfile:
             self.c['hispanic_or_latino'] = self.rc['hispanic_or_latino'] / self.rc['population'] * 100.0
             self.c['white_alone_not_hispanic_or_latino'] = self.rc['white_alone_not_hispanic_or_latino'] / self.rc['population'] * 100.0
             self.c['italian_alone'] = self.rc['italian_alone'] / self.rc['population'] * 100.0
+            self.c['under_18'] = self.rc['under_18'] / self.rc['population'] * 100.0
+            self.c['age_65_plus'] = self.rc['age_65_plus'] / self.rc['population'] * 100.0
         else:
             # Race category - Percentages of the total population
             self.c['white_alone'] = 0.0
@@ -254,6 +338,8 @@ class DemographicProfile:
             self.c['hispanic_or_latino'] = 0.0
             self.c['white_alone_not_hispanic_or_latino'] = 0.0
             self.c['italian_alone'] = 0.0
+            self.c['under_18'] = 0.0
+            self.c['age_65_plus'] = 0.0
 
         if self.rc['population_25_years_and_older'] != 0 and self.rc['population'] != 0:
             # Education category - Percentages of the population 25 years and older
@@ -264,6 +350,24 @@ class DemographicProfile:
             self.c['population_25_years_and_older'] = 0.0
             self.c['bachelors_degree_or_higher'] = 0.0
             self.c['graduate_degree_or_higher'] = 0.0
+
+        if self.rc['poverty_universe'] != 0:
+            self.c['population_below_poverty_level'] = \
+                self.rc['population_below_poverty_level'] / self.rc['poverty_universe'] * 100.0
+        else:
+            self.c['population_below_poverty_level'] = 0.0
+
+        if self.rc['labor_force'] != 0:
+            self.c['unemployed_population'] = \
+                self.rc['unemployed_population'] / self.rc['labor_force'] * 100.0
+        else:
+            self.c['unemployed_population'] = 0.0
+
+        if self.rc['occupied_housing_units'] != 0:
+            self.c['homeowner_occupied_housing_units'] = \
+                self.rc['homeowner_occupied_housing_units'] / self.rc['occupied_housing_units'] * 100.0
+        else:
+            self.c['homeowner_occupied_housing_units'] = 0.0
 
 
         # Income category
@@ -343,10 +447,36 @@ class DemographicProfile:
                 return
         self.display_sections.append((section_title, [(row_mode, key)]))
 
+    def _sections_for_view(self, view='full'):
+        if view == 'compact':
+            sections = getattr(self, 'compact_display_sections', [])
+        else:
+            sections = getattr(self, 'display_sections', [])
+        if sections:
+            return sections
+        # Backward compatibility for legacy pickled objects.
+        return [('POPULATION', [('nc', 'population')])]
+
+    def _can_render_row(self, row_mode, key):
+        # Backward compatibility: legacy pickled profiles may miss newer keys.
+        if key not in self.rh:
+            return False
+        if row_mode == 'std':
+            return key in self.fc and key in self.fcd
+        if row_mode == 'co':
+            return key in self.fcd
+        return key in self.fc
+
     def __repr__(self):
         '''Display a representation of the DemographicProfile class'''
-        return "DemographicProfile(name='%s', counties=%s)" % (self.name,
-                self.counties)
+        return (
+            "DemographicProfile("
+            f"name={self.name!r}, "
+            f"geoid={self.geoid!r}, "
+            f"sumlevel={self.sumlevel!r}, "
+            f"state={self.state!r}"
+            ")"
+        )
 
     def dp_full_row_str(self, content):
         '''Return a line with just one string'''
@@ -374,7 +504,7 @@ class DemographicProfile:
         '''Return a row without a compound'''
         return self.dp_row_str(self.rh[key], '', self.fc[key])
 
-    def tocsv(self):
+    def tocsv(self, view='full'):
         '''Display as a CSV'''
         csvwriter = csv.writer(sys.stdout, quoting=csv.QUOTE_MINIMAL)
 
@@ -405,9 +535,12 @@ class DemographicProfile:
             csv_dp_full_row_str(', '.join(self.counties_display))
 
         csv_divider()
-        for section_title, rows in self.display_sections:
+        for section_title, rows in self._sections_for_view(view):
+            renderable_rows = [row for row in rows if self._can_render_row(*row)]
+            if not renderable_rows:
+                continue
             csv_dp_full_row_str(section_title)
-            for row_mode, key in rows:
+            for row_mode, key in renderable_rows:
                 if row_mode == 'std':
                     csv_dp_row_std(key)
                 elif row_mode == 'co':
@@ -416,8 +549,8 @@ class DemographicProfile:
                     csv_dp_row_nc(key)
         csv_divider()
 
-    def __str__(self):
-        '''Return table'''
+    def to_table(self, view='full'):
+        '''Return table view'''
         # + self.dp_full_row_str(self.key) \
         out_str  = self.divider()
         out_str += self.dp_full_row_str(self.name)
@@ -427,9 +560,12 @@ class DemographicProfile:
             out_str += self.dp_full_row_str(', '.join(self.counties_display))
 
         out_str += self.divider()
-        for section_title, rows in self.display_sections:
+        for section_title, rows in self._sections_for_view(view):
+            renderable_rows = [row for row in rows if self._can_render_row(*row)]
+            if not renderable_rows:
+                continue
             out_str += self.dp_full_row_str(section_title)
-            for row_mode, key in rows:
+            for row_mode, key in renderable_rows:
                 if row_mode == 'std':
                     out_str += self.dp_row_std(key)
                 elif row_mode == 'co':
@@ -439,6 +575,10 @@ class DemographicProfile:
         out_str += self.divider()
 
         return out_str
+
+    def __str__(self):
+        '''Return full table'''
+        return self.to_table(view='full')
 
     def __eq__(self, other):
         return self.sumlevel == other.sumlevel and self.name == other.name

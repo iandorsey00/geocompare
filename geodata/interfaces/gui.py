@@ -1,7 +1,10 @@
 try:
-    from geodata.engine import Engine
+    from geocompare.engine import Engine
 except ImportError:  # pragma: no cover - script execution fallback
-    from engine import Engine
+    try:
+        from geodata.engine import Engine
+    except ImportError:  # pragma: no cover - script execution fallback
+        from engine import Engine
 
 
 import tkinter as tk

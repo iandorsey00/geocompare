@@ -3,6 +3,7 @@ import heapq
 import logging
 import operator
 import sys
+import time
 from math import atan2, cos, radians, sin, sqrt
 from pathlib import Path
 
@@ -11,23 +12,33 @@ import numpy
 from rapidfuzz import fuzz
 
 try:
-    from geodata.database.Database import Database
-    from geodata.identity.place_identity import PlaceIdentityIndex
-    from geodata.repository.sqlite_repository import SQLiteRepository
-    from geodata.tools.CountyTools import CountyTools
-    from geodata.tools.geodata_typecast import gdt
-    from geodata.tools.KeyTools import KeyTools
-    from geodata.tools.StateTools import StateTools
-    from geodata.tools.SummaryLevelTools import SummaryLevelTools
+    from geocompare.database.Database import Database
+    from geocompare.identity.place_identity import PlaceIdentityIndex
+    from geocompare.repository.sqlite_repository import SQLiteRepository
+    from geocompare.tools.CountyTools import CountyTools
+    from geocompare.tools.geodata_typecast import gdt
+    from geocompare.tools.KeyTools import KeyTools
+    from geocompare.tools.StateTools import StateTools
+    from geocompare.tools.SummaryLevelTools import SummaryLevelTools
 except ImportError:  # pragma: no cover - script execution fallback
-    from database.Database import Database
-    from identity.place_identity import PlaceIdentityIndex
-    from repository.sqlite_repository import SQLiteRepository
-    from tools.CountyTools import CountyTools
-    from tools.geodata_typecast import gdt
-    from tools.KeyTools import KeyTools
-    from tools.StateTools import StateTools
-    from tools.SummaryLevelTools import SummaryLevelTools
+    try:
+        from geodata.database.Database import Database
+        from geodata.identity.place_identity import PlaceIdentityIndex
+        from geodata.repository.sqlite_repository import SQLiteRepository
+        from geodata.tools.CountyTools import CountyTools
+        from geodata.tools.geodata_typecast import gdt
+        from geodata.tools.KeyTools import KeyTools
+        from geodata.tools.StateTools import StateTools
+        from geodata.tools.SummaryLevelTools import SummaryLevelTools
+    except ImportError:  # pragma: no cover - script execution fallback
+        from database.Database import Database
+        from identity.place_identity import PlaceIdentityIndex
+        from repository.sqlite_repository import SQLiteRepository
+        from tools.CountyTools import CountyTools
+        from tools.geodata_typecast import gdt
+        from tools.KeyTools import KeyTools
+        from tools.StateTools import StateTools
+        from tools.SummaryLevelTools import SummaryLevelTools
 
 
 class Engine:
@@ -51,13 +62,51 @@ class Engine:
 
     def create_data_products(self, data_path):
         """Generate and save data products."""
-        products = Database(data_path).get_products()
+        start_time = time.monotonic()
+        interactive = sys.stderr.isatty()
+        status_state = {"last_len": 0}
+
+        def format_elapsed(seconds):
+            total = int(seconds)
+            h, rem = divmod(total, 3600)
+            m, s = divmod(rem, 60)
+            if h:
+                return f"{h:02d}:{m:02d}:{s:02d}"
+            return f"{m:02d}:{s:02d}"
+
+        def render_status(message, finalize=False):
+            elapsed = time.monotonic() - start_time
+            text = f"[elapsed {format_elapsed(elapsed)}] {message}"
+            if interactive:
+                pad = max(0, status_state["last_len"] - len(text))
+                ending = "\n" if finalize else ""
+                print(f"\r{text}{' ' * pad}", end=ending, file=sys.stderr, flush=True)
+                status_state["last_len"] = 0 if finalize else len(text)
+                return
+            print(text, file=sys.stderr, flush=True)
+
+        def progress_with_elapsed(message):
+            render_status(message, finalize=False)
+
+        progress_with_elapsed(f"Starting data build from {data_path}")
+        products = Database(
+            data_path,
+            progress_callback=progress_with_elapsed,
+        ).get_products()
 
         # Write data products to SQLite.
+        progress_with_elapsed("Writing products to SQLite")
         self.primary_repository.save_data_products(products)
 
         self._set_data_products(products)
         self.logger.info("Data product write completed.")
+        total_elapsed = time.monotonic() - start_time
+        render_status("Data product write completed.", finalize=True)
+        print(
+            f"Total build time: {format_elapsed(total_elapsed)}",
+            file=sys.stderr,
+            flush=True,
+        )
 
     def load_data_products(self):
         """Load data products."""
@@ -475,11 +524,11 @@ class Engine:
 
             csvwriter.writerow(this_row)
 
-    def get_csv_dp(self, display_label, **kwargs):
+    def get_csv_dp(self, display_label, profile_view="full", **kwargs):
         """Output a DemographicProfile in CSV format"""
         self.get_data_products()
         dp = self._lookup_dp(display_label)
-        dp.tocsv()
+        dp.tocsv(view=profile_view)
 
     def get_distance(self, dp1, dp2, kilometers=False):
         """Distance between two sets of lat/long coords from DemographicProfiles"""

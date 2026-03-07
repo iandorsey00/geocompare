@@ -25,6 +25,15 @@ def test_detect_latest_years(tmp_path):
     assert db.detect_latest_gazetteer_year(data_dir) == "2025"
 
 
+def test_detect_latest_acs_year_from_txt(tmp_path):
+    data_dir = Path(tmp_path)
+    (data_dir / "g20205us.txt").touch()
+    (data_dir / "g20245us.txt").touch()
+
+    db = Database.__new__(Database)
+    assert db.detect_latest_acs_year(data_dir) == "2024"
+
+
 def test_apply_overlays_adds_crime_and_project_metrics():
     dp = FakeDP("16000US0601000", 1000)
 

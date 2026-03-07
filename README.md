@@ -21,6 +21,30 @@ Build data products:
 geocompare build /path/to/data
 ```
 
+Fetch latest ACS + gazetteer files (with resumable downloads and progress bars):
+
+```bash
+python3 scripts/fetch_latest_acs.py --out-dir /path/to/data
+```
+
+Refresh an existing data directory safely (recommended):
+
+```bash
+python3 scripts/fetch_latest_acs.py --out-dir /path/to/data --archive-existing
+```
+
+Delete only managed ACS/gazetteer files before refetching:
+
+```bash
+python3 scripts/fetch_latest_acs.py --out-dir /path/to/data --clean
+```
+
+Rate-limit-sensitive run (fails fast on Cloudflare 1015 / HTTP 429):
+
+```bash
+python3 scripts/fetch_latest_acs.py --out-dir /path/to/data --archive-existing --max-attempts 2
+```
+
 `build` now auto-detects the latest ACS year (`g<YEAR>5*.csv` + `e<YEAR>5*.txt`)
 and latest compatible gazetteer year (`<YEAR>_Gaz_*_national.txt`) in the input
 directory.

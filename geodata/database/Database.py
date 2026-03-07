@@ -4,15 +4,21 @@ import json
 import re
 
 try:
-    from geodata.datainterface.DemographicProfile import DemographicProfile
-    from geodata.datainterface.GeoVector import GeoVector
-    from geodata.tools.geodata_typecast import gdt, gdti, gdtf
-    from geodata.tools.StateTools import StateTools
+    from geocompare.datainterface.DemographicProfile import DemographicProfile
+    from geocompare.datainterface.GeoVector import GeoVector
+    from geocompare.tools.geodata_typecast import gdt, gdti, gdtf
+    from geocompare.tools.StateTools import StateTools
 except ImportError:  # pragma: no cover - script execution fallback
-    from datainterface.DemographicProfile import DemographicProfile
-    from datainterface.GeoVector import GeoVector
-    from tools.geodata_typecast import gdt, gdti, gdtf
-    from tools.StateTools import StateTools
+    try:
+        from geodata.datainterface.DemographicProfile import DemographicProfile
+        from geodata.datainterface.GeoVector import GeoVector
+        from geodata.tools.geodata_typecast import gdt, gdti, gdtf
+        from geodata.tools.StateTools import StateTools
+    except ImportError:  # pragma: no cover - script execution fallback
+        from datainterface.DemographicProfile import DemographicProfile
+        from datainterface.GeoVector import GeoVector
+        from tools.geodata_typecast import gdt, gdti, gdtf
+        from tools.StateTools import StateTools
 # from initialize_sqlalchemy import Base, engine, session
 
 from itertools import islice
@@ -31,12 +37,24 @@ class Database:
     '''Creates data products for use by geodata.'''
     LINE_NUMBERS_DICT = {
         'B01003': ['1'],   # TOTAL POPULATION
+        'B01001': [        # SEX BY AGE (selected lines)
+            '3', '4', '5', '6',           # Male under 18
+            '20', '21', '22', '23', '24', '25',  # Male 65+
+            '27', '28', '29', '30',       # Female under 18
+            '44', '45', '46', '47', '48', '49',  # Female 65+
+        ],
+        'B01002': ['1'],   # MEDIAN AGE
+        'B11001': ['1'],   # HOUSEHOLD TYPE - total households
         'B19301': ['1'],   # PER CAPITA INCOME IN THE PAST 12 MONTHS
         'B02001': ['2', '3', '5'],  # RACE
         'B03002': ['3', '12'],  # HISPANIC OR LATINO ORIGIN BY RACE
         'B04004': ['51'],  # PEOPLE REPORTING SINGLE ANCESTRY - Italian
         'B15003': ['1', '22', '23', '24', '25'],  # EDUCATIONAL ATTAINMENT
+        'B17001': ['1', '2'],   # POVERTY STATUS
         'B19013': ['1'],   # MEDIAN HOUSEHOLD INCOME
+        'B23025': ['3', '5'],   # EMPLOYMENT STATUS (labor force, unemployed)
+        'B25003': ['1', '2'],   # TENURE (occupied, owner occupied)
+        'B25010': ['1'],   # AVERAGE HOUSEHOLD SIZE
         'B25035': ['1'],   # Median year structure built
         'B25018': ['1'],   # Median number of rooms
         'B25058': ['1'],   # Median contract rent
@@ -54,6 +72,16 @@ class Database:
 
     ###########################################################################
     # Helper methods for __init__
+
+    def _progress(self, message, current=None, total=None):
+        cb = getattr(self, "_progress_callback", None)
+        if cb is None:
+            return
+        if current is not None and total:
+            pct = int((current / total) * 100)
+            cb(f"[{pct:3d}%] {message} ({current}/{total})")
+        else:
+            cb(message)
 
     def get_tm_columns(self, path):
         '''Obtain columns for table_metadata'''
@@ -93,15 +121,32 @@ class Database:
 
     def detect_latest_acs_year(self, path):
         years = []
-        for candidate in path.glob('g*5us.csv'):
-            match = re.match(r'^g(\d{4})5us\.csv$', candidate.name)
-            if match:
-                years.append(int(match.group(1)))
+        for pattern, regex in (
+            ('g*5us.csv', r'^g(\d{4})5us\.csv$'),
+            ('g*5us.txt', r'^g(\d{4})5us\.txt$'),
+        ):
+            for candidate in path.glob(pattern):
+                match = re.match(regex, candidate.name)
+                if match:
+                    years.append(int(match.group(1)))
         if not years:
             raise FileNotFoundError(
-                'Unable to detect ACS year. Expected a g<YEAR>5us.csv file.'
+                'Unable to detect ACS year. Expected g<YEAR>5us.csv or g<YEAR>5us.txt.'
             )
         return str(max(years))
+
+    def resolve_geo_file_path(self, year, state):
+        candidates = [
+            self.data_dir / f'g{year}5{state}.csv',
+            self.data_dir / f'g{year}5{state}.txt',
+        ]
+        for candidate in candidates:
+            if candidate.exists():
+                return candidate
+        raise FileNotFoundError(
+            f'Missing ACS geography file for {state}: expected one of '
+            + ', '.join(path.name for path in candidates)
+        )
 
     def detect_latest_gazetteer_year(self, path):
         years = []
@@ -309,12 +354,16 @@ class Database:
 
     def debug_output_table(self, table_name):
         '''Print debug information for a table'''
+        if not logger.isEnabledFor(logging.DEBUG):
+            return
         logger.debug('%s table:', table_name)
         for row in self.c.execute('SELECT * FROM %s LIMIT 5' % table_name):
             logger.debug('%s', row)
 
     def debug_output_list(self, list_name):
         '''Print debug information for a list'''
+        if not logger.isEnabledFor(logging.DEBUG):
+            return
         logger.debug('%s:', list_name)
         for row in getattr(self, list_name)[:5]:
             logger.debug('%s', row)
@@ -325,38 +374,83 @@ class Database:
 
     def debug_output_dict(self, dict_name):
         '''Print debug information for a dictionary'''
+        if not logger.isEnabledFor(logging.DEBUG):
+            return
         logger.debug('%s:', dict_name)
         for key, value in self.take(5, getattr(self, dict_name).items()):
             logger.debug('%s: %s', key, value)
 
     def get_geo_csv_rows(self):
-        '''Get all rows geographic CSV files for every state'''
-        # Get rows from CSV
+        '''Get normalized geography rows from ACS geography source files.'''
         rows = []
-        # Get rows from CSV files for each state.
+
+        def parse_geo_txt_line(line):
+            if not line:
+                return None
+
+            stusab = line[6:8].strip().lower() if len(line) >= 8 else ''
+            sumlevel = line[8:11].strip() if len(line) >= 11 else ''
+            logrecno = line[13:20].strip() if len(line) >= 20 else ''
+            geoid_match = re.search(r'\b(\d{3}[A-Z0-9]{2}US[0-9A-Z]+)\b', line)
+            if not (stusab and sumlevel and logrecno and geoid_match):
+                return None
+
+            geoid = geoid_match.group(1).strip()
+            name = line[geoid_match.end():].strip()
+            if not name:
+                return None
+
+            return [stusab, sumlevel, logrecno, geoid, name]
+
+        def parse_geo_csv_row(row):
+            if len(row) < 50:
+                return None
+            return [
+                row[1].lower().strip(),
+                row[2].strip(),
+                row[4].strip(),
+                row[48].strip(),
+                row[49].strip(),
+            ]
+
+        def add_rows_from_file(this_path):
+            if this_path.suffix.lower() == '.txt':
+                with open(this_path, 'rt', encoding='iso-8859-1') as f:
+                    for line in f:
+                        parsed = parse_geo_txt_line(line.rstrip('\n'))
+                        if parsed is not None:
+                            rows.append(parsed)
+            else:
+                with open(this_path, 'rt', encoding='iso-8859-1') as f:
+                    for raw_row in csv.reader(f):
+                        parsed = parse_geo_csv_row(raw_row)
+                        if parsed is not None:
+                            rows.append(parsed)
+
+        # Get rows from files for each state.
         for state in self.st.get_abbrevs(lowercase=True):
-            this_path = self.data_dir / f'g{self.year}5{state}.csv'
-            
-            with open(this_path, 'rt', encoding='iso-8859-1') as f:
-                rows += list(csv.reader(f))
+            this_path = self.resolve_geo_file_path(self.year, state)
+            add_rows_from_file(this_path)
 
         # Also, get rows for the national file (for ZCTA support).
-        this_path = self.data_dir / f'g{self.year}5us.csv'
-        with open(this_path, 'rt', encoding='iso-8859-1') as f:
-            rows += list(csv.reader(f))
-        
+        this_path = self.resolve_geo_file_path(self.year, 'us')
+        add_rows_from_file(this_path)
+
         return rows
     
     ###########################################################################
     # __init__
 
-    def __init__(self, path):
+    def __init__(self, path, progress_callback=None):
         '''Create the database'''
         # Initialize ##########################################################
 
+        self._progress_callback = progress_callback
         self.data_dir = Path(path).expanduser().resolve()
+        self._progress(f"Build start: {self.data_dir}")
         self.year = self.detect_latest_acs_year(self.data_dir)
         self.gh_year = self.detect_latest_gazetteer_year(self.data_dir)
+        self._progress(f"Detected ACS year {self.year}; gazetteer year {self.gh_year}")
         self.overlays = self._load_overlays(self.data_dir)
 
         self.st = StateTools()
@@ -367,6 +461,7 @@ class Database:
 
         # table_metadata ######################################################
         this_table_name = 'table_metadata'
+        self._progress("Loading table metadata")
 
         # Process column definitions
         columns = self.get_tm_columns(self.data_dir)
@@ -388,6 +483,7 @@ class Database:
 
         # geographies #########################################################
         this_table_name = 'geographies'
+        self._progress("Loading geographies")
 
         # Process column definitions
         columns = [
@@ -412,26 +508,23 @@ class Database:
         # 310 = Metro/Micro Area
         # 400 = Urban Area
         # 860 = ZCTA
-        rows = list(filter(lambda x: 
-                           (x[2] == '160' \
-                        or x[2] == '050' \
-                        or x[2] == '040' \
-                        or x[2] == '860' \
-                        or x[2] == '310' \
-                        or x[2] == '400')
-                        and ''.join(x[48][3:5]) == '00' ,
-                           rows))
-        rows = list(
-                    map(lambda x:
-                        [x[1].lower(),             # STUSAB [lowercase]
-                        x[2],                      # SUMLEVEL
-                        x[4],                      # LOGRECNO
-                        self.st.get_state(x[49]),  # STATE
-                        x[48],                     # GEOID
-                        x[49]],                    # NAME
-                        rows
-                    )
-                )
+        rows = [
+            row for row in rows
+            if row[1] in {'160', '050', '040', '860', '310', '400'}
+            and len(row[3]) >= 5
+            and row[3][3:5] == '00'
+        ]
+        rows = [
+            [
+                row[0],                    # STUSAB [lowercase]
+                row[1],                    # SUMLEVEL
+                row[2],                    # LOGRECNO
+                self.st.get_state(row[4]), # STATE
+                row[3],                    # GEOID
+                row[4],                    # NAME
+            ]
+            for row in rows
+        ]
 
         # DBAPI question mark substring
         columns_len = len(column_defs)
@@ -445,6 +538,7 @@ class Database:
 
         # geoheaders ##########################################################
         this_table_name = 'geoheaders'
+        self._progress("Loading geoheaders")
 
         # The primary reason we are interested in the 2019 National Gazetteer
         # is that we need to get the land area so that we can calculate
@@ -539,9 +633,6 @@ class Database:
 
         for row in rows:
             row[-1] = row[-1].strip()
-
-        print(columns)
-        print(column_defs)
 
         # Create table
         self.create_table(this_table_name, columns, column_defs, rows)
@@ -653,6 +744,7 @@ class Database:
         this_table_name = 'data'
 
         logger.info('Processing data table. This might take a while.')
+        self._progress("Loading ACS estimate sequences")
 
         columns = self.data_identifiers_list
         self.data_columns = columns
@@ -682,12 +774,15 @@ class Database:
         first_table_id = True
 
         # Iterate through table_ids
-        for table_id, line_numbers in self.line_numbers_dict.items():
+        total_tables = len(self.line_numbers_dict)
+        for table_index, (table_id, line_numbers) in enumerate(self.line_numbers_dict.items(), start=1):
             columns = self.data_identifiers[table_id]
             rows = []
 
             # Iterate through files
-            for file in self.files[table_id]:
+            files_for_table = self.files[table_id]
+            total_files = len(files_for_table)
+            for file_index, file in enumerate(files_for_table, start=1):
                 # Read from each CSV file
                 with open(file, 'rt') as f:
                     csv_rows = csv.reader(f)
@@ -695,6 +790,12 @@ class Database:
                     for csv_row in csv_rows:
                         # Get elements at self.positions[table_id] for each row
                         rows.append(idx_map(self.positions[table_id], csv_row))
+                if file_index == 1 or file_index % 20 == 0 or file_index == total_files:
+                    self._progress(
+                        f"Reading {table_id} sequence files",
+                        current=file_index,
+                        total=total_files,
+                    )
 
             if first_table_id:
                 question_mark_substr = self.dbapi_qm_substr(len(columns))
@@ -723,11 +824,17 @@ class Database:
                     display_data_identifier,
                     debug[0],
                 )
+            self._progress(
+                f"Loaded ACS table {table_id}",
+                current=table_index,
+                total=total_tables,
+            )
         # Debug output
         self.debug_output_table(this_table_name)
 
         # geodata #############################################################
         this_table_name = 'geodata'
+        self._progress("Merging geographies, geoheaders, and ACS data")
 
         # Combine data from places, geoheaders, and data into a single table.
         
@@ -782,6 +889,7 @@ class Database:
 
         # Commit changes
         self.conn.commit()
+        self._progress("Build complete")
 
         # Row factory
         self.conn.row_factory = sqlite3.Row
@@ -808,36 +916,35 @@ class Database:
         # Medians and standard deviations #####################################
 
         # Prepare a DataFrame into which we can insert rows.
+        metric_columns = [
+            'ALAND_SQMI',
+            'B01003_1',
+            'B19301_1',
+            'B02001_2',
+            'B02001_3',
+            'B02001_5',
+            'B03002_3',
+            'B03002_12',
+            'B04004_51',
+            'B15003_1',
+            'B15003_22',
+            'B15003_23',
+            'B15003_24',
+            'B15003_25',
+            'B19013_1',
+            'B25018_1',
+            'B25035_1',
+            'B25058_1',
+            'B25077_1',
+        ]
         rows = []
         for row in self.c.execute('SELECT * from geodata'):
             try: 
-                rows.append([
-                            gdt(row['ALAND_SQMI']),
-                            gdt(row['B01003_1']),
-                            gdt(row['B19301_1']),
-                            gdt(row['B02001_2']),
-                            gdt(row['B02001_3']),
-                            gdt(row['B02001_5']),
-                            gdt(row['B03002_3']),
-                            gdt(row['B03002_12']),
-                            gdt(row['B04004_51']),
-                            gdt(row['B15003_1']),
-                            gdt(row['B15003_22']),
-                            gdt(row['B15003_23']),
-                            gdt(row['B15003_24']),
-                            gdt(row['B15003_25']),
-                            gdt(row['B19013_1']),
-                            gdt(row['B25018_1']),
-                            gdt(row['B25035_1']),
-                            gdt(row['B25058_1']),
-                            gdt(row['B25077_1']),
-                            ])
+                rows.append([gdt(row[column]) for column in metric_columns])
             except AttributeError:
                 logger.exception('AttributeError while preparing medians/std dev dataframe')
 
-        # print(dict(enumerate(self.columns)))
-        # print([self.columns[11]] + self.columns[15:])
-        df = pd.DataFrame(rows, columns=[self.columns[12]] + self.columns[16:])
+        df = pd.DataFrame(rows, columns=metric_columns)
 
         # Adjustments for better calculations of medians and
         # standard deviations, and better results for highest and lowest values

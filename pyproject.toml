@@ -28,14 +28,14 @@ dev = [
 ]
 
 [project.scripts]
-geocompare = "geodata.interfaces.cli:main"
-geocompare-gui = "geodata.interfaces.gui:main"
+geocompare = "geocompare.interfaces.cli:main"
+geocompare-gui = "geocompare.interfaces.gui:main"
 
 [tool.setuptools.packages.find]
 exclude = ["docs*", "old-2016-files*", "bin*"]
 
 [tool.setuptools.dynamic]
-version = { attr = "geodata.__version__" }
+version = { attr = "geocompare.__version__" }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

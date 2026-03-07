@@ -1,6 +1,9 @@
 try:
-    from geodata.ingest.database_builder import DatabaseBuilder
+    from geocompare.ingest.database_builder import DatabaseBuilder
 except ImportError:  # pragma: no cover - script execution fallback
-    from ingest.database_builder import DatabaseBuilder
+    try:
+        from geodata.ingest.database_builder import DatabaseBuilder
+    except ImportError:  # pragma: no cover - script execution fallback
+        from ingest.database_builder import DatabaseBuilder
 
 __all__ = ['DatabaseBuilder']

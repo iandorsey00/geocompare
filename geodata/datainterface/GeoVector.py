@@ -6,13 +6,18 @@ for demographic data.
 '''
 
 try:
-    from geodata.tools.geodata_safedivision import gdsd
-    from geodata.tools.geodata_typecast import gdt, gdti, gdtf
-    from geodata.tools.CountyTools import CountyTools
+    from geocompare.tools.geodata_safedivision import gdsd
+    from geocompare.tools.geodata_typecast import gdt, gdti, gdtf
+    from geocompare.tools.CountyTools import CountyTools
 except ImportError:  # pragma: no cover - script execution fallback
-    from tools.geodata_safedivision import gdsd
-    from tools.geodata_typecast import gdt, gdti, gdtf
-    from tools.CountyTools import CountyTools
+    try:
+        from geodata.tools.geodata_safedivision import gdsd
+        from geodata.tools.geodata_typecast import gdt, gdti, gdtf
+        from geodata.tools.CountyTools import CountyTools
+    except ImportError:  # pragma: no cover - script execution fallback
+        from tools.geodata_safedivision import gdsd
+        from tools.geodata_typecast import gdt, gdti, gdtf
+        from tools.CountyTools import CountyTools
 
 import sys
 
@@ -316,44 +321,17 @@ class GeoVector:
 
     def __repr__(self):
         '''Display vector information and subcomponent scores.'''
-        population = gdti(self.d['population'])
-        if self.sumlevel == '160':
-            out_str = '''GeoVector(%s; %s.
-Population: %s. Std: (%s,%s,%s,%s,%s,%s,%s,%s). App: (%s,%s,%s).)''' % (
-            self.name,
-            ', '.join(self.counties_display),
-            f'{population:,}',
-            self.s['population_density'],
-            self.s['per_capita_income'],
-            self.s['white_alone'],
-            self.s['black_alone'],
-            self.s['asian_alone'],
-            self.s['hispanic_or_latino'],
-            self.s['bachelors_degree_or_higher'],
-            self.s['graduate_degree_or_higher'],
-            self.s['population_density'],
-            self.s['per_capita_income'],
-            self.s['median_year_structure_built'],
-            )
-        else:
-            out_str = '''GeoVector(%s
-Population: %s. Std: (%s,%s,%s,%s,%s,%s,%s,%s). App: (%s,%s,%s).)''' % (
-            self.name,
-            f'{population:,}',
-            self.s['population_density'],
-            self.s['per_capita_income'],
-            self.s['white_alone'],
-            self.s['black_alone'],
-            self.s['asian_alone'],
-            self.s['hispanic_or_latino'],
-            self.s['bachelors_degree_or_higher'],
-            self.s['graduate_degree_or_higher'],
-            self.s['population_density'],
-            self.s['per_capita_income'],
-            self.s['median_year_structure_built'],
-            )
-        
-        return out_str
+        return (
+            "GeoVector("
+            f"name={self.name!r}, "
+            f"geoid={self.geoid!r}, "
+            f"sumlevel={self.sumlevel!r}, "
+            f"state={self.state!r}, "
+            f"population={gdti(self.d['population'])}, "
+            f"std_dims={len(self.ws['std'])}, "
+            f"app_dims={len(self.ws['app'])}"
+            ")"
+        )
 
     def __eq__(self, other):
         return self.sumlevel == other.sumlevel and self.name == other.name

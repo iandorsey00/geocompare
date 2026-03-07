@@ -142,7 +142,9 @@ cython_debug/
 bin/
 
 # User-defined scripts
-scripts/
+scripts/*
+!scripts/
+!scripts/fetch_latest_acs.py
 
 # Local overlay inputs (crime/project data)
 /overlays/*

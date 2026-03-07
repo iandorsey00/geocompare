@@ -4,11 +4,19 @@ import pickle
 
 _CLASS_REMAP = {
     ('datainterface.DemographicProfile', 'DemographicProfile'): (
-        'geodata.datainterface.DemographicProfile',
+        'geocompare.datainterface.DemographicProfile',
         'DemographicProfile',
     ),
     ('datainterface.GeoVector', 'GeoVector'): (
-        'geodata.datainterface.GeoVector',
+        'geocompare.datainterface.GeoVector',
+        'GeoVector',
+    ),
+    ('geodata.datainterface.DemographicProfile', 'DemographicProfile'): (
+        'geocompare.datainterface.DemographicProfile',
+        'DemographicProfile',
+    ),
+    ('geodata.datainterface.GeoVector', 'GeoVector'): (
+        'geocompare.datainterface.GeoVector',
         'GeoVector',
     ),
 }

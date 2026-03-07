@@ -1,6 +1,9 @@
 try:
-    from geodata.identity.place_identity import PlaceIdentityIndex
+    from geocompare.identity.place_identity import PlaceIdentityIndex
 except ImportError:  # pragma: no cover - script execution fallback
-    from identity.place_identity import PlaceIdentityIndex
+    try:
+        from geodata.identity.place_identity import PlaceIdentityIndex
+    except ImportError:  # pragma: no cover - script execution fallback
+        from identity.place_identity import PlaceIdentityIndex
 
 __all__ = ["PlaceIdentityIndex"]

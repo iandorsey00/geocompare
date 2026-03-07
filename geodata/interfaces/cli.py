@@ -4,14 +4,20 @@ import logging
 import sys
 
 try:
-    from geodata import __version__
+    from geocompare import __version__
 except ImportError:  # pragma: no cover - script execution fallback
-    from __init__ import __version__
+    try:
+        from geodata import __version__
+    except ImportError:  # pragma: no cover - script execution fallback
+        from __init__ import __version__
 
 try:
-    from geodata.services.query_service import QueryService
+    from geocompare.services.query_service import QueryService
 except ImportError:  # pragma: no cover - script execution fallback
-    from services.query_service import QueryService
+    try:
+        from geodata.services.query_service import QueryService
+    except ImportError:  # pragma: no cover - script execution fallback
+        from services.query_service import QueryService
 
 
 class GeodataCLI:
@@ -86,6 +92,12 @@ class GeodataCLI:
             "profile", aliases=["dp"], help="show one demographic profile"
         )
         profile_parser.add_argument("display_label", help="the exact place name")
+        profile_parser.add_argument(
+            "--profile-view",
+            choices=["compact", "full"],
+            default="full",
+            help="profile display density",
+        )
         profile_parser.set_defaults(func=self.get_dp)
 
         similar_parser = query_subparsers.add_parser(
@@ -182,6 +194,12 @@ class GeodataCLI:
             "profile", aliases=["dp"], help="export one demographic profile to CSV"
         )
         export_profile_parser.add_argument("display_label", help="the exact place name")
+        export_profile_parser.add_argument(
+            "--profile-view",
+            choices=["compact", "full"],
+            default="full",
+            help="profile export density",
+        )
         export_profile_parser.set_defaults(func=self.get_csv_dp)
 
         # Legacy top-level aliases for older workflows
@@ -278,7 +296,7 @@ class GeodataCLI:
         if len(dp_list) == 0:
             self._eprint("Sorry, there is no geography with that name.")
             return
-        print(dp_list[0])
+        print(dp_list[0].to_table(view=args.profile_view))
 
     def resolve_geography(self, args):
         matches = self.engine.resolve_geography(**vars(args))

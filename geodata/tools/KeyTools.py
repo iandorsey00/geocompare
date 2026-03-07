@@ -1,9 +1,13 @@
 try:
-    from geodata.tools.StateTools import StateTools
-    from geodata.tools.CountyTools import CountyTools
+    from geocompare.tools.StateTools import StateTools
+    from geocompare.tools.CountyTools import CountyTools
 except ImportError:  # pragma: no cover - script execution fallback
-    from tools.StateTools import StateTools
-    from tools.CountyTools import CountyTools
+    try:
+        from geodata.tools.StateTools import StateTools
+        from geodata.tools.CountyTools import CountyTools
+    except ImportError:  # pragma: no cover - script execution fallback
+        from tools.StateTools import StateTools
+        from tools.CountyTools import CountyTools
 
 class KeyTools:
     '''
