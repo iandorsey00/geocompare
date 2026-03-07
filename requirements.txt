@@ -1,2 +1,4 @@
 pandas
+numpy
+geopy
 rapidfuzz==0.2.0

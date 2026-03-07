@@ -17,5 +17,11 @@ setup(
     author_email='ian.dorsey@gmail.com',
     url='https://github.com/iandorsey00/geodata',
     license='MIT',
-    packages=find_packages(exclude=('tests', 'docs'))
+    packages=find_packages(exclude=('tests', 'docs')),
+    install_requires=[
+        'pandas',
+        'numpy',
+        'geopy',
+        'rapidfuzz==0.2.0',
+    ],
 )
