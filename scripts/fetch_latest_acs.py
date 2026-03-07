@@ -302,6 +302,26 @@ def discover_latest_acs_year() -> str:
     raise DownloadError(f"Could not discover ACS years from {ACS_ROOT}")
 
 
+def is_sequence_based_acs_year(year: int) -> bool:
+    base = f"{ACS_ROOT}{year}/"
+    candidates = [
+        urljoin(base, "sequence-based-SF/documentation/user_tools/ACS_5yr_Seq_Table_Number_Lookup.txt"),
+        urljoin(base, "data/5_year_seq_by_state/g" + str(year) + "5us.csv"),
+    ]
+    return any(url_exists(url) for url in candidates)
+
+
+def discover_latest_sequence_based_acs_year(start_year: int | None = None) -> str:
+    current = time.gmtime().tm_year
+    probe_start = min(start_year or current, current + 1)
+    for year in range(probe_start, 2009, -1):
+        if is_sequence_based_acs_year(year):
+            return str(year)
+    raise DownloadError(
+        "Could not find a sequence-based ACS Summary File year compatible with this pipeline."
+    )
+
+
 def discover_latest_gazetteer_year() -> str:
     years: list[int] = []
     try:
@@ -923,14 +943,31 @@ def main() -> int:
 
     try:
         lookup_dest = out_dir / "ACS_5yr_Seq_Table_Number_Lookup.txt"
-        acs_start_year = int(args.acs_year) if args.acs_year else int(discover_latest_acs_year())
+        if args.acs_year:
+            acs_start_year = int(args.acs_year)
+            if not is_sequence_based_acs_year(acs_start_year):
+                raise DownloadError(
+                    f"ACS {acs_start_year} is not sequence-based (likely table-based-SF). "
+                    "This downloader currently supports sequence-based inputs only. "
+                    "Pick a supported year (for example, 2021)."
+                )
+        else:
+            latest_any = int(discover_latest_acs_year())
+            if is_sequence_based_acs_year(latest_any):
+                acs_start_year = latest_any
+            else:
+                acs_start_year = int(discover_latest_sequence_based_acs_year(latest_any))
+                log(
+                    f"Latest ACS is {latest_any} (table-based). "
+                    f"Using latest sequence-based year {acs_start_year} for compatibility."
+                )
         acs_year = str(acs_start_year)
         status = None
         last_lookup_error = None
 
-        # If auto-discovering, step back a few years until lookup fetch works.
+        # If auto-discovering, step back across sequence-based vintages.
         fallback_years = [acs_start_year] if args.acs_year else list(
-            range(acs_start_year, max(2009, acs_start_year - 4) - 1, -1)
+            range(acs_start_year, 2009, -1)
         )
 
         if args.archive_existing:
