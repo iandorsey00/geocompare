@@ -66,6 +66,20 @@ class GeodataCLI:
         self._add_n_arg(search_parser, default=15, label='number of results to display')
         search_parser.set_defaults(func=self.display_label_search)
 
+        # Resolve command (identity/key resolution)
+        resolve_parser = subparsers.add_parser(
+            'resolve',
+            aliases=['key', 'id'],
+            help='resolve a place string to canonical IDs',
+            description='Resolve an input place string to likely canonical geography identifiers.',
+        )
+        resolve_parser.add_argument('query', help='input place string to resolve')
+        resolve_parser.add_argument('--state', help='optional 2-letter lowercase state filter (e.g., ca)')
+        resolve_parser.add_argument('--sumlevel', help='optional summary level filter (e.g., 160)')
+        resolve_parser.add_argument('--population', type=int, help='optional population hint')
+        self._add_n_arg(resolve_parser, default=5, label='number of matches to return')
+        resolve_parser.set_defaults(func=self.resolve_geography)
+
         # Create the parser for the "tocsv" command
         tocsv_parser = subparsers.add_parser(
             'tocsv',
@@ -202,6 +216,27 @@ class GeodataCLI:
             print("Sorry, there is no geography with that name.")
             return
         print(dp_list[0])
+
+    def resolve_geography(self, args):
+        matches = self.engine.resolve_geography(**vars(args))
+        if len(matches) == 0:
+            print('No matches found.')
+            return
+
+        print('-' * 96)
+        print(' Canonical ID'.ljust(38), 'Summary Level'.ljust(15), 'State'.ljust(7), 'Population'.rjust(12), ' Name')
+        print('-' * 96)
+        for match in matches:
+            pop = match.get('population')
+            pop_display = '' if pop is None else f'{int(pop):,}'
+            print(
+                f" {match['canonical_id'][:36].ljust(38)}"
+                f" {match['sumlevel'].ljust(15)}"
+                f" {match['state'].ljust(7)}"
+                f" {pop_display.rjust(12)}"
+                f" {match['name']}"
+            )
+        print('-' * 96)
 
     def compare_geovectors(self, args, mode='std'):
         closest_gvs = self.engine.compare_geovectors(**vars(args), mode=mode)

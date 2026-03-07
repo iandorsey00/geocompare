@@ -13,6 +13,7 @@ from rapidfuzz import fuzz
 
 from repository.pickle_repository import PickleRepository
 from repository.sqlite_repository import SQLiteRepository
+from identity.place_identity import PlaceIdentityIndex
 
 from tools.geodata_typecast import gdt
 
@@ -43,6 +44,7 @@ class Engine:
         self.d = None
         self._dp_by_name = {}
         self._gv_by_name = {}
+        self.identity_index = None
             
     def create_data_products(self, data_path):
         '''Generate and save data products.'''
@@ -80,6 +82,9 @@ class Engine:
 
         self._dp_by_name = {dp.name: dp for dp in demographicprofiles}
         self._gv_by_name = {gv.name: gv for gv in geovectors}
+        self.identity_index = PlaceIdentityIndex.from_demographic_profiles(
+            demographicprofiles
+        )
 
     def refresh_cache(self):
         '''Reload data products and query indexes.'''
@@ -95,6 +100,19 @@ class Engine:
         if dp is None:
             raise ValueError(f'No geography found for display label: {display_label}')
         return dp
+
+    def resolve_geography(
+        self, query, state=None, sumlevel=None, population=None, n=5, **kwargs
+    ):
+        '''Resolve an input geography string to likely canonical matches.'''
+        self.get_data_products()
+        return self.identity_index.resolve(
+            query,
+            state=state,
+            sumlevel=sumlevel,
+            population=population,
+            limit=n,
+        )
 
     def _lookup_gv(self, display_label):
         gv = self._gv_by_name.get(display_label)
