@@ -1,16 +1,21 @@
 import pandas as pd
 import numpy as np
 
-from datainterface.DemographicProfile import DemographicProfile
-from datainterface.GeoVector import GeoVector
+try:
+    from geodata.datainterface.DemographicProfile import DemographicProfile
+    from geodata.datainterface.GeoVector import GeoVector
+    from geodata.tools.geodata_typecast import gdt, gdti, gdtf
+    from geodata.tools.StateTools import StateTools
+except ImportError:  # pragma: no cover - script execution fallback
+    from datainterface.DemographicProfile import DemographicProfile
+    from datainterface.GeoVector import GeoVector
+    from tools.geodata_typecast import gdt, gdti, gdtf
+    from tools.StateTools import StateTools
 # from initialize_sqlalchemy import Base, engine, session
 
 from itertools import islice
 import sqlite3
 import csv
-
-from tools.geodata_typecast import gdt, gdti, gdtf
-from tools.StateTools import StateTools
 
 from collections import defaultdict
 from pathlib import Path

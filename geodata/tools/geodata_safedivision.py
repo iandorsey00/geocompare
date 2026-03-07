@@ -1,4 +1,7 @@
-from tools.geodata_typecast import gdt, gdti, gdtf
+try:
+    from geodata.tools.geodata_typecast import gdt, gdti, gdtf
+except ImportError:  # pragma: no cover - script execution fallback
+    from tools.geodata_typecast import gdt, gdti, gdtf
 import numpy as np
 
 def gdsd(dividend, divisor, verbose=False, divbyzero=0):

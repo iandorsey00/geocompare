@@ -1,4 +1,3 @@
-from database.Database import Database
 from pathlib import Path
 
 import csv
@@ -11,16 +10,26 @@ import geopy.distance
 import numpy
 from rapidfuzz import fuzz
 
-from repository.pickle_repository import PickleRepository
-from repository.sqlite_repository import SQLiteRepository
-from identity.place_identity import PlaceIdentityIndex
-
-from tools.geodata_typecast import gdt
-
-from tools.CountyTools import CountyTools
-from tools.StateTools import StateTools
-from tools.KeyTools import KeyTools
-from tools.SummaryLevelTools import SummaryLevelTools
+try:
+    from geodata.database.Database import Database
+    from geodata.repository.pickle_repository import PickleRepository
+    from geodata.repository.sqlite_repository import SQLiteRepository
+    from geodata.identity.place_identity import PlaceIdentityIndex
+    from geodata.tools.geodata_typecast import gdt
+    from geodata.tools.CountyTools import CountyTools
+    from geodata.tools.StateTools import StateTools
+    from geodata.tools.KeyTools import KeyTools
+    from geodata.tools.SummaryLevelTools import SummaryLevelTools
+except ImportError:  # pragma: no cover - script execution fallback
+    from database.Database import Database
+    from repository.pickle_repository import PickleRepository
+    from repository.sqlite_repository import SQLiteRepository
+    from identity.place_identity import PlaceIdentityIndex
+    from tools.geodata_typecast import gdt
+    from tools.CountyTools import CountyTools
+    from tools.StateTools import StateTools
+    from tools.KeyTools import KeyTools
+    from tools.SummaryLevelTools import SummaryLevelTools
 
 class Engine:
     def __init__(self):

@@ -1,4 +1,8 @@
-from engine import Engine
+try:
+    from geodata.engine import Engine
+except ImportError:  # pragma: no cover - script execution fallback
+    from engine import Engine
+
 
 import tkinter as tk
 import tkinter.messagebox as tk_messagebox
@@ -678,5 +682,10 @@ class GeodataGUI:
     def activate_mainloop(self):
         self.root.mainloop()
 
-ggui = GeodataGUI()
-ggui.activate_mainloop()
+def main():
+    gui = GeodataGUI()
+    gui.activate_mainloop()
+
+
+if __name__ == '__main__':
+    main()

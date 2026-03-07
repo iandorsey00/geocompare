@@ -5,10 +5,14 @@ similar the geographies. Scores are determined based on a normalization process
 for demographic data.
 '''
 
-from tools.geodata_safedivision import gdsd
-from tools.geodata_typecast import gdt, gdti, gdtf
-
-from tools.CountyTools import CountyTools
+try:
+    from geodata.tools.geodata_safedivision import gdsd
+    from geodata.tools.geodata_typecast import gdt, gdti, gdtf
+    from geodata.tools.CountyTools import CountyTools
+except ImportError:  # pragma: no cover - script execution fallback
+    from tools.geodata_safedivision import gdsd
+    from tools.geodata_typecast import gdt, gdti, gdtf
+    from tools.CountyTools import CountyTools
 
 import sys
 

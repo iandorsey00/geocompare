@@ -8,7 +8,12 @@ import sqlite3
 
 from rapidfuzz import fuzz
 
-from repository.base import DataRepository
+try:
+    from geodata.repository.base import DataRepository
+    from geodata.repository.pickle_compat import compat_loads
+except ImportError:  # pragma: no cover - script execution fallback
+    from repository.base import DataRepository
+    from repository.pickle_compat import compat_loads
 
 
 class SQLiteRepository(DataRepository):
@@ -277,7 +282,7 @@ class SQLiteRepository(DataRepository):
             raise RuntimeError(f'no data products found in sqlite file: {self.path}')
 
         try:
-            return pickle.loads(row[0])
+            return compat_loads(row[0])
         except pickle.UnpicklingError:
             raise RuntimeError(
                 f'data product payload is corrupted or incompatible: {self.path}'
@@ -308,7 +313,7 @@ class SQLiteRepository(DataRepository):
         if row is None:
             return None
 
-        return pickle.loads(row[0])
+        return compat_loads(row[0])
 
     def search_demographic_profiles(self, query, n):
         if n <= 0:
@@ -341,7 +346,7 @@ class SQLiteRepository(DataRepository):
             conn.close()
 
         best = heapq.nlargest(n, rows, key=lambda row: fuzz.token_set_ratio(query, row[0]))
-        return [pickle.loads(row[1]) for row in best]
+        return [compat_loads(row[1]) for row in best]
 
     def get_coordinates(self, display_label):
         conn = self._connect()

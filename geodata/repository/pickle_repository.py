@@ -1,7 +1,12 @@
 from pathlib import Path
 import pickle
 
-from repository.base import DataRepository
+try:
+    from geodata.repository.base import DataRepository
+    from geodata.repository.pickle_compat import compat_load
+except ImportError:  # pragma: no cover - script execution fallback
+    from repository.base import DataRepository
+    from repository.pickle_compat import compat_load
 
 
 class PickleRepository(DataRepository):
@@ -23,7 +28,7 @@ class PickleRepository(DataRepository):
     def load_data_products(self):
         try:
             with self.path.open('rb') as f:
-                return pickle.load(f)
+                return compat_load(f)
         except FileNotFoundError:
             raise RuntimeError(f'data product file not found: {self.path}')
         except EOFError:

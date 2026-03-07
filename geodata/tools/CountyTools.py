@@ -5,11 +5,18 @@ with converting county GEOIDs to names.
 Gets previously generated data to improve performance.
 '''
 
-from tools.data.county_geoid_to_name import county_geoid_to_name
-from tools.data.county_name_to_geoid import county_name_to_geoid
-from tools.data.county_names import county_names
-from tools.data.county_to_places import county_to_places
-from tools.data.place_to_counties import place_to_counties
+try:
+    from geodata.tools.data.county_geoid_to_name import county_geoid_to_name
+    from geodata.tools.data.county_name_to_geoid import county_name_to_geoid
+    from geodata.tools.data.county_names import county_names
+    from geodata.tools.data.county_to_places import county_to_places
+    from geodata.tools.data.place_to_counties import place_to_counties
+except ImportError:  # pragma: no cover - script execution fallback
+    from tools.data.county_geoid_to_name import county_geoid_to_name
+    from tools.data.county_name_to_geoid import county_name_to_geoid
+    from tools.data.county_names import county_names
+    from tools.data.county_to_places import county_to_places
+    from tools.data.place_to_counties import place_to_counties
 
 class CountyTools:
     def __init__(self):

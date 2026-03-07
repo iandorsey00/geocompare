@@ -4,8 +4,12 @@ geographies.
 '''
 
 # pylint: disable=import-error
-from tools.geodata_typecast import gdt, gdti, gdtf
-from tools.CountyTools import CountyTools
+try:
+    from geodata.tools.geodata_typecast import gdt, gdti, gdtf
+    from geodata.tools.CountyTools import CountyTools
+except ImportError:  # pragma: no cover - script execution fallback
+    from tools.geodata_typecast import gdt, gdti, gdtf
+    from tools.CountyTools import CountyTools
 import textwrap
 import sys
 import csv

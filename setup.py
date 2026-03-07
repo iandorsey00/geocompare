@@ -9,7 +9,7 @@ with open('README.md') as f:
 
 setup(
     name='geodata',
-    version='0.2',
+    version='0.3.0',
     description='A program for getting information about and comparing geographies',
     long_description=readme,
     long_description_content_type='text/markdown',
@@ -24,4 +24,10 @@ setup(
         'geopy',
         'rapidfuzz==0.2.0',
     ],
+    entry_points={
+        'console_scripts': [
+            'geodata=geodata.interfaces.cli:main',
+            'geodata-gui=geodata.interfaces.gui:main',
+        ],
+    },
 )
