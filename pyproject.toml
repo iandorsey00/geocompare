@@ -1,0 +1,62 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "geodata"
+version = "0.4.0"
+description = "A program for getting information about and comparing geographies"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [
+  { name = "Ian Dorsey", email = "ian.dorsey@gmail.com" }
+]
+dependencies = [
+  "pandas",
+  "numpy",
+  "geopy",
+  "rapidfuzz==0.2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0.0",
+  "ruff>=0.6.0",
+  "black>=24.0.0",
+  "mypy>=1.10.0",
+]
+
+[project.scripts]
+geodata = "geodata.interfaces.cli:main"
+geodata-gui = "geodata.interfaces.gui:main"
+
+[tool.setuptools.packages.find]
+exclude = ["docs*", "old-2016-files*", "bin*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+
+[tool.black]
+line-length = 100
+target-version = ["py39"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+exclude = ["bin", "doc"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"scripts/benchmark_queries.py" = ["E402"]
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+disable_error_code = ["no-redef"]

@@ -16,10 +16,14 @@ except ImportError:  # pragma: no cover - script execution fallback
 from itertools import islice
 import sqlite3
 import csv
+import logging
 
 from collections import defaultdict
 from pathlib import Path
 import sys
+
+logger = logging.getLogger(__name__)
+
 
 class Database:
     '''Creates data products for use by geodata.'''
@@ -84,17 +88,15 @@ class Database:
 
     def debug_output_table(self, table_name):
         '''Print debug information for a table'''
-        print('%s table:' % table_name, '\n')
+        logger.debug('%s table:', table_name)
         for row in self.c.execute('SELECT * FROM %s LIMIT 5' % table_name):
-            print(row)
-        print()
+            logger.debug('%s', row)
 
     def debug_output_list(self, list_name):
         '''Print debug information for a list'''
-        print('%s:' % list_name, '\n')
+        logger.debug('%s:', list_name)
         for row in getattr(self, list_name)[:5]:
-            print(row)
-        print()
+            logger.debug('%s', row)
 
     def take(self, n, iterable):
         '''Return first n items of the iterable as a list'''
@@ -102,10 +104,9 @@ class Database:
 
     def debug_output_dict(self, dict_name):
         '''Print debug information for a dictionary'''
-        print('%s:' % dict_name, '\n')
+        logger.debug('%s:', dict_name)
         for key, value in self.take(5, getattr(self, dict_name).items()):
-            print(key + ':', value)
-        print()
+            logger.debug('%s: %s', key, value)
 
     def get_geo_csv_rows(self):
         '''Get all rows geographic CSV files for every state'''
@@ -480,8 +481,7 @@ class Database:
         # data ################################################################
         this_table_name = 'data'
 
-        print('Processing data table. This might take a while.')
-        print()
+        logger.info('Processing data table. This might take a while.')
 
         columns = self.data_identifiers_list
         self.data_columns = columns
@@ -547,10 +547,11 @@ class Database:
             # Print the count for debug purposes. Should be around ~200,000
             for debug in self.c.execute('SELECT COUNT(*) FROM data'):
                 display_data_identifier = table_id
-                print('Processing for', display_data_identifier,
-                    'complete (' + str(debug[0]), 'rows).')
-
-        print()
+                logger.info(
+                    'Processing for %s complete (%s rows).',
+                    display_data_identifier,
+                    debug[0],
+                )
         # Debug output
         self.debug_output_table(this_table_name)
 
@@ -624,8 +625,8 @@ class Database:
             try:
                 self.demographicprofiles.append(DemographicProfile(row))
             except AttributeError as e:
-                print('AttributeError:', e)
-                print(tuple(row))
+                logger.warning('AttributeError while creating DemographicProfile: %s', e)
+                logger.debug('Bad row: %s', tuple(row))
 
         # Debug output
         self.debug_output_list('demographicprofiles')
@@ -658,7 +659,7 @@ class Database:
                             gdt(row['B25077_1']),
                             ])
             except AttributeError:
-                print('AttributeError:', instance)
+                logger.exception('AttributeError while preparing medians/std dev dataframe')
 
         # print(dict(enumerate(self.columns)))
         # print([self.columns[11]] + self.columns[15:])
@@ -673,19 +674,13 @@ class Database:
         df = df.replace({'B25035_1': {0: np.nan}})
 
         # Print some debug information.
-        print('DataFrames:', '\n')
-        print(df.head())
-        print()
+        logger.debug('DataFrames:\n%s', df.head())
 
-        print('Medians:', '\n')
         medians = df.median()
-        print(dict(medians))
-        print()
+        logger.debug('Medians:\n%s', dict(medians))
 
-        print('Standard deviations:', '\n')
         standard_deviations = df.std()
-        print(dict(standard_deviations))
-        print()
+        logger.debug('Standard deviations:\n%s', dict(standard_deviations))
 
         # GeoVectors ##########################################################
 
@@ -704,10 +699,10 @@ class Database:
             # If a TypeError is thrown because some data is unavailable, just
             # don't make that GeoVector and print a debugging message.
             except (TypeError, ValueError, AttributeError):
-                print('Note: Inadequate data for GeoVector creation:',
-                      row['NAME'])
-
-        print()
+                logger.warning(
+                    'Inadequate data for GeoVector creation: %s',
+                    row['NAME'],
+                )
 
         # Debug output
         self.debug_output_list('geovectors')

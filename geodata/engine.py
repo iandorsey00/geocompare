@@ -2,6 +2,7 @@ from pathlib import Path
 
 import csv
 import heapq
+import logging
 import operator
 import sys
 from math import atan2, cos, radians, sin, sqrt
@@ -31,6 +32,7 @@ except ImportError:  # pragma: no cover - script execution fallback
 
 class Engine:
     def __init__(self):
+        self.logger = logging.getLogger(__name__)
         self.ct = CountyTools()
         self.st = StateTools()
         self.kt = KeyTools()
@@ -55,7 +57,7 @@ class Engine:
         self.primary_repository.save_data_products(products)
 
         self._set_data_products(products)
-        print('Data product write completed.')
+        self.logger.info('Data product write completed.')
 
     def load_data_products(self):
         '''Load data products.'''

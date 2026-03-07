@@ -8,6 +8,13 @@ processed demographic data without the need to modify any data files.
 This project supports geographies in the United States.
 
 See the [Wiki](https://github.com/iandorsey00/geodata/wiki) for documentation.
+Architecture details: [doc/architecture.md](doc/architecture.md).
+
+## Install
+
+```bash
+python3 -m pip install -e .
+```
 
 ## CLI Quick Start
 
@@ -34,3 +41,29 @@ Export workflows:
 geodata export rows "population :income" -n 20
 geodata export profile "San Francisco city, California"
 ```
+
+## Diagnostics
+
+Set verbosity when needed:
+
+```bash
+geodata --log-level INFO build /path/to/data
+```
+
+## Quality Baseline
+
+Run local quality checks:
+
+```bash
+python3 -m pip install -e ".[dev]"
+ruff check tests geodata/identity geodata/repository/sqlite_repository.py geodata/interfaces/cli.py scripts/benchmark_queries.py
+black --check tests geodata/identity geodata/repository/sqlite_repository.py geodata/interfaces/cli.py scripts/benchmark_queries.py
+mypy geodata/identity geodata/repository/sqlite_repository.py geodata/interfaces/cli.py
+pytest -q
+```
+
+## Storage Model
+
+- SQLite is the only data backend (`bin/default.sqlite`).
+- Repository metadata now includes a `schema_version` table.
+- Schema upgrades use explicit, step-based migrations in `SQLiteRepository`.
