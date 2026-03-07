@@ -37,6 +37,22 @@ class Database:
         return list(pd.read_csv(path / f'{gh_year}_Gaz_place_national.txt',
             sep='\t', nrows=1, dtype='str').columns)
 
+    def get_state_gazetteer_path(self, gh_year, path):
+        '''Resolve the state gazetteer file path with backward compatibility.'''
+        candidates = [
+            path / f'{gh_year}_Gaz_state_national.txt',
+            path / '2019_Gaz_state_national.txt',
+        ]
+
+        for candidate in candidates:
+            if candidate.exists():
+                return candidate
+
+        candidate_list = ', '.join(str(p.name) for p in candidates)
+        raise FileNotFoundError(
+            f'Unable to find a state gazetteer file. Expected one of: {candidate_list}'
+        )
+
     def dbapi_qm_substr(self, columns_len):
         '''Get the DBAPI question mark substring'''
         return ', '.join(['?'] * columns_len)
@@ -232,7 +248,7 @@ class Database:
             c_row.insert(5, '')
         
         # Get rows for states (040) from CSV
-        this_path = self.data_dir / '2019_Gaz_state_national.txt'
+        this_path = self.get_state_gazetteer_path(self.gh_year, self.data_dir)
 
         with open(this_path, 'rt') as f:
             s_rows = list(csv.reader(f, delimiter='\t'))
