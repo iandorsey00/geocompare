@@ -14,6 +14,8 @@ import sys
 
 class GeoVector:
     '''A vector used to compare places with others.'''
+    _ct = CountyTools()
+
     def __init__(
         self,
         db_row,
@@ -27,7 +29,7 @@ class GeoVector:
         self.name = db_row['NAME']
 
         # CountyTools instance and county data
-        ct = CountyTools()
+        ct = self._ct
         self.counties = []
         self.counties_display = []
 

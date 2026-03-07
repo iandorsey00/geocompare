@@ -12,6 +12,8 @@ import csv
 
 class DemographicProfile:
     '''Used to display data for a geography.'''
+    _ct = CountyTools()
+
     def __init__(self, db_row):
 
         self.name = db_row['NAME']
@@ -21,10 +23,9 @@ class DemographicProfile:
         # self.key = db_row['KEY']
 
         # CountyTools instance and county data
-        ct = CountyTools()
+        ct = self._ct
         # County GEOIDs
         if self.sumlevel == '160': # Place
-            print(self.geoid)
             self.counties = ct.place_to_counties[self.geoid[7:]]
             # County names (without the state)
             self.counties_display = list(map(lambda x: ct.county_geoid_to_name[x],

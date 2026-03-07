@@ -2,6 +2,14 @@ import argparse
 from engine import Engine
 
 class GeodataCLI:
+    def _add_common_filters(self, parser, include_context=True):
+        parser.add_argument('-f', '--geofilter', help='filter criteria (e.g., population:gt:100000)')
+        if include_context:
+            parser.add_argument('-c', '--context', help='context scope (e.g., 160, 160in040:ca)')
+
+    def _add_n_arg(self, parser, default=15, label='number of rows to display'):
+        parser.add_argument('-n', type=int, default=default, help=label)
+
     def __init__(self):
         self.engine = Engine()
 
@@ -15,92 +23,120 @@ class GeodataCLI:
 
         # Create the top-level argument parser
         parser = argparse.ArgumentParser(
-            description='Displays information for geographies in the U.S.',
+            description='Explore and compare geography data from your local data products.',
+            epilog='Examples: geodata build ~/data  |  geodata search "san francisco"  |  geodata view distance "San Francisco city, California" "San Jose city, California"',
             prog='geodata')
         # Create top-level subparsers
         subparsers = parser.add_subparsers(
-            help='enter geodata <subcommand> -h for more information.')
+            help='enter geodata <command> -h for details',
+            dest='command',
+            required=True)
 
         # Top-level subparser
         # Create the parsor for the "createdb" command
-        createdb_parser = subparsers.add_parser('createdb', aliases=['c'])
+        createdb_parser = subparsers.add_parser(
+            'createdb',
+            aliases=['build', 'ingest', 'c'],
+            help='build data products from source files',
+            description='Build data products from source files and write both SQLite and legacy pickle outputs.'
+        )
         createdb_parser.add_argument('path', help='path to data files')
         createdb_parser.set_defaults(func=self.create_data_products)
 
         # Create the parser for the "view" command
-        view_parsers = subparsers.add_parser('view', aliases=['v'])
+        view_parsers = subparsers.add_parser(
+            'view',
+            aliases=['show', 'v'],
+            help='view data and comparisons',
+        )
         # Create subparsers for the "view" command
         view_subparsers = view_parsers.add_subparsers(
-            help='enter geodata view <subcommand> -h for more information.')
+            help='enter geodata view <command> -h for details',
+            dest='view_command',
+            required=True)
 
         # Create the parser for the "search" command
-        search_parser = subparsers.add_parser('search', aliases=['s'],
-            description='Search for a display label (place name)')
+        search_parser = subparsers.add_parser(
+            'search',
+            aliases=['find', 'lookup', 's'],
+            help='search place names',
+            description='Search for a display label (place name)'
+        )
         search_parser.add_argument('query', help='search query')
-        search_parser.add_argument('-n', type=int, default=15, help='number of results to display')
+        self._add_n_arg(search_parser, default=15, label='number of results to display')
         search_parser.set_defaults(func=self.display_label_search)
 
         # Create the parser for the "tocsv" command
-        tocsv_parser = subparsers.add_parser('tocsv', aliases=['t'],
-            description='Output data in CSV format')
+        tocsv_parser = subparsers.add_parser(
+            'tocsv',
+            aliases=['csv', 'export', 't'],
+            help='export data as CSV',
+            description='Output data in CSV format'
+        )
         tocsv_subparsers = tocsv_parser.add_subparsers(
-            help='enter geodata tocsv <subcommand> -h for more information.')
+            help='enter geodata tocsv <command> -h for details',
+            dest='tocsv_command',
+            required=True)
 
         # View subparser
         # Create parsors for the view command
         # DemographicProfiles #################################################
-        dp_parsor = view_subparsers.add_parser('dp',
+        dp_parsor = view_subparsers.add_parser('dp', aliases=['profile'],
+            help='show one demographic profile',
             description='View a DemographicProfile.')
         dp_parsor.add_argument('display_label', help='the exact place name')
         dp_parsor.set_defaults(func=self.get_dp)
 
         # GeoVectors [standard mode] ##########################################
-        gv_parsor = view_subparsers.add_parser('gv',
+        gv_parsor = view_subparsers.add_parser('gv', aliases=['similar'],
+            help='show nearest geovectors',
             description='View GeoVectors nearest to a GeoVector.')
         gv_parsor.add_argument('display_label', help='the exact place name')
         gv_parsor.add_argument('-c', '--context', help='geographies to compare with')
-        gv_parsor.add_argument('-n', type=int, default=15, help='number of rows to display')
+        self._add_n_arg(gv_parsor, default=15)
         gv_parsor.set_defaults(func=self.compare_geovectors)
 
         # GeoVectors [appearance mode] ########################################
-        gva_parsor = view_subparsers.add_parser('gva',
+        gva_parsor = view_subparsers.add_parser('gva', aliases=['similar-app'],
+            help='show nearest geovectors (appearance mode)',
             description='View GeoVectors nearest to a GeoVector [appearance mode]')
         gva_parsor.add_argument('display_label', help='the exact place name')
         gva_parsor.add_argument('-c', '--context', help='geographies to compare with')
-        gva_parsor.add_argument('-n', type=int, default=15, help='number of rows to display')
+        self._add_n_arg(gva_parsor, default=15)
         gva_parsor.set_defaults(func=self.compare_geovectors_app)
 
         # Highest values ######################################################
-        hv_parsor = view_subparsers.add_parser('hv',
+        hv_parsor = view_subparsers.add_parser('hv', aliases=['top', 'highest'],
+            help='show highest values by component',
             description='View geographies that rank highest with regard to comp')
         hv_parsor.add_argument('comp', help='the comp that you want to rank')
-        hv_parsor.add_argument('-d', '--data_type', help='c: component; cc: compound')
-        hv_parsor.add_argument('-f', '--geofilter', help='filter by criteria')
-        hv_parsor.add_argument('-c', '--context', help='group of geographies to display')
-        hv_parsor.add_argument('-n', type=int, default=15, help='number of rows to display')
+        hv_parsor.add_argument('-d', '--data_type', choices=['c', 'cc'], help='c: component; cc: compound')
+        self._add_common_filters(hv_parsor, include_context=True)
+        self._add_n_arg(hv_parsor, default=15)
         hv_parsor.set_defaults(func=self.extreme_values)
 
         # Lowest values #######################################################
-        lv_parsor = view_subparsers.add_parser('lv',
+        lv_parsor = view_subparsers.add_parser('lv', aliases=['bottom', 'lowest'],
+            help='show lowest values by component',
             description='View geographies that rank lowest with regard to comp')
         lv_parsor.add_argument('comp', help='the comp that you want to rank')
-        lv_parsor.add_argument('-d', '--data_type', help='c: component; cc: compound')
-        lv_parsor.add_argument('-f', '--geofilter', help='filter by criteria')
-        lv_parsor.add_argument('-c', '--context', help='group of geographies to display')
-        lv_parsor.add_argument('-n', type=int, default=15, help='number of rows to display')
+        lv_parsor.add_argument('-d', '--data_type', choices=['c', 'cc'], help='c: component; cc: compound')
+        self._add_common_filters(lv_parsor, include_context=True)
+        self._add_n_arg(lv_parsor, default=15)
         lv_parsor.set_defaults(func=self.lowest_values)
 
         # Closest geographies #################################################
-        cg_parsor = view_subparsers.add_parser('cg',
+        cg_parsor = view_subparsers.add_parser('cg', aliases=['near', 'closest'],
+            help='show closest geographies by distance',
             description='View geographies that are closest to the one specified by display_label')
         cg_parsor.add_argument('display_label', help='the exact place name')
-        cg_parsor.add_argument('-f', '--geofilter', help='filter by criteria')
-        cg_parsor.add_argument('-c', '--context', help='group of geographies to display')
-        cg_parsor.add_argument('-n', type=int, default=15, help='number of rows to display')
+        self._add_common_filters(cg_parsor, include_context=True)
+        self._add_n_arg(cg_parsor, default=15)
         cg_parsor.set_defaults(func=self.closest_geographies)
 
         # Distance ############################################################
-        d_parsor = view_subparsers.add_parser('d',
+        d_parsor = view_subparsers.add_parser('d', aliases=['distance', 'dist'],
+            help='distance between two places',
             description='Get the distance between two places')
         d_parsor.add_argument('display_label_1', help='Get the distance between this display label and...')
         d_parsor.add_argument('display_label_2', help='...this one.')
@@ -111,15 +147,16 @@ class GeodataCLI:
         # Create parsors for the tocsv command
         # Rows ################################################################
         rows_parsor = tocsv_subparsers.add_parser('rows',
+            help='export multiple rows to CSV',
             description='Output data rows in CSV format')
         rows_parsor.add_argument('comps', help='components or compounds to output')
-        rows_parsor.add_argument('-f', '--geofilter', help='filter by criteria')
-        rows_parsor.add_argument('-c', '--context', help='group of geographies')
-        rows_parsor.add_argument('-n', type=int, default=0, help='number of rows to display')
+        self._add_common_filters(rows_parsor, include_context=True)
+        self._add_n_arg(rows_parsor, default=0, label='number of rows to display (0 = all)')
         rows_parsor.set_defaults(func=self.rows)
 
         # DemographicProfile ##################################################
-        csv_dp_parsor = tocsv_subparsers.add_parser('dp',
+        csv_dp_parsor = tocsv_subparsers.add_parser('dp', aliases=['profile'],
+            help='export one demographic profile to CSV',
             description='Output a DemographicProfile in CSV format')
         csv_dp_parsor.add_argument('display_label', help='the exact place name')
         csv_dp_parsor.set_defaults(func=self.get_csv_dp)
@@ -161,15 +198,18 @@ class GeodataCLI:
 
     def get_dp(self, args):
         dp_list = self.engine.get_dp(**vars(args))
+        if len(dp_list) == 0:
+            print("Sorry, there is no geography with that name.")
+            return
         print(dp_list[0])
 
     def compare_geovectors(self, args, mode='std'):
         closest_gvs = self.engine.compare_geovectors(**vars(args), mode=mode)
-        comparison_gv = closest_gvs[0]
 
         if len(closest_gvs) == 0:
             print("Sorry, no GeoVectors match your criteria.")
         else:
+            comparison_gv = closest_gvs[0]
             if mode == 'std':
                 width = 105
             elif mode == 'app':
