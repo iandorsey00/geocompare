@@ -7,7 +7,7 @@ from geocompare import __version__
 from geocompare.services.query_service import QueryService
 
 
-class GeodataCLI:
+class GeoCompareCLI:
     def __init__(self):
         self.engine = QueryService()
 
@@ -188,23 +188,6 @@ class GeodataCLI:
             help="profile export density",
         )
         export_profile_parser.set_defaults(func=self.get_csv_dp)
-
-        # Legacy top-level aliases for older workflows
-        legacy_search_parser = subparsers.add_parser("search", help="legacy alias for query search")
-        legacy_search_parser.add_argument("query", help="search query")
-        legacy_search_parser.add_argument(
-            "-n", type=int, default=15, help="number of results to display"
-        )
-        legacy_search_parser.add_argument(
-            "--format",
-            choices=["table", "json", "csv"],
-            default="table",
-            help="output format",
-        )
-        legacy_search_parser.add_argument(
-            "--wide", action="store_true", help="wider output without truncation"
-        )
-        legacy_search_parser.set_defaults(func=self.display_label_search)
 
         args = parser.parse_args()
         logging.basicConfig(
@@ -521,7 +504,7 @@ class GeodataCLI:
 
 
 def main():
-    GeodataCLI()
+    GeoCompareCLI()
 
 
 if __name__ == "__main__":

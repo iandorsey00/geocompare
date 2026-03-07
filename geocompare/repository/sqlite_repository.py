@@ -1,8 +1,8 @@
 import hashlib
 import heapq
+import json
 import logging
 import math
-import pickle
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
@@ -10,7 +10,7 @@ from pathlib import Path
 from rapidfuzz import fuzz
 
 from geocompare.repository.base import DataRepository
-from geocompare.repository.pickle_compat import compat_loads
+from geocompare.repository.serialization import dump_payload, load_payload
 
 CURRENT_SCHEMA_VERSION = 1
 
@@ -245,7 +245,7 @@ class SQLiteRepository(DataRepository):
                 self._normalize_value(dp.rc.get("latitude")),
                 self._normalize_value(dp.rc.get("longitude")),
                 self._normalize_value(dp.rc.get("population")),
-                pickle.dumps(dp, protocol=pickle.HIGHEST_PROTOCOL),
+                dump_payload(dp),
             ]
 
             for key in rc_keys:
@@ -279,7 +279,7 @@ class SQLiteRepository(DataRepository):
                 gv.name,
                 gv.sumlevel,
                 gv.state,
-                pickle.dumps(gv, protocol=pickle.HIGHEST_PROTOCOL),
+                dump_payload(gv),
             )
             for gv in gvs
         ]
@@ -291,7 +291,7 @@ class SQLiteRepository(DataRepository):
 
     def save_data_products(self, data_products):
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        payload = pickle.dumps(data_products, protocol=pickle.HIGHEST_PROTOCOL)
+        payload = dump_payload(data_products)
         updated_at = datetime.now(timezone.utc).isoformat()
 
         conn = self._connect()
@@ -327,8 +327,8 @@ class SQLiteRepository(DataRepository):
             raise RuntimeError(f"no data products found in sqlite file: {self.path}")
 
         try:
-            return compat_loads(row[0])
-        except pickle.UnpicklingError:
+            return load_payload(row[0])
+        except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
             raise RuntimeError(f"data product payload is corrupted or incompatible: {self.path}")
         except Exception as e:
             raise RuntimeError(f"unexpected error loading sqlite data products: {e!r}")
@@ -354,7 +354,7 @@ class SQLiteRepository(DataRepository):
         if row is None:
             return None
 
-        return compat_loads(row[0])
+        return load_payload(row[0])
 
     def search_demographic_profiles(self, query, n):
         if n <= 0:
@@ -385,7 +385,7 @@ class SQLiteRepository(DataRepository):
             conn.close()
 
         best = heapq.nlargest(n, rows, key=lambda row: fuzz.token_set_ratio(query, row[0]))
-        return [compat_loads(row[1]) for row in best]
+        return [load_payload(row[1]) for row in best]
 
     def get_coordinates(self, display_label):
         conn = self._connect()

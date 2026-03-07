@@ -15,8 +15,8 @@ from geocompare.database.Database import Database
 from geocompare.identity.place_identity import PlaceIdentityIndex
 from geocompare.repository.sqlite_repository import SQLiteRepository
 from geocompare.tools.CountyTools import CountyTools
-from geocompare.tools.geodata_typecast import gdt
 from geocompare.tools.KeyTools import KeyTools
+from geocompare.tools.numeric import parse_number
 from geocompare.tools.StateTools import StateTools
 from geocompare.tools.SummaryLevelTools import SummaryLevelTools
 
@@ -160,7 +160,7 @@ class Engine:
                 {
                     "column": f"{sort_by}_{comp}",
                     "operator": criteria[1],
-                    "value": gdt(criteria[2]),
+                    "value": parse_number(criteria[2]),
                 }
             )
 
@@ -260,8 +260,7 @@ class Engine:
                 filter_by, print_ = self.get_data_types(comp, data_type, fetch_one)
                 operator_key = filter_criterium[1]
 
-                # The value is a index 2; convert using geodata_typecast
-                value = gdt(filter_criterium[2])
+                value = parse_number(filter_criterium[2])
 
                 # Now, filter by operator at index 1.
                 compare = operators.get(operator_key)

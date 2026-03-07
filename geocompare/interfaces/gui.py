@@ -10,7 +10,7 @@ import time
 
 from functools import partial
 
-class GeodataGUI:
+class GeoCompareGUI:
     def __init__(self):
         self.dp_offset = 0
 
@@ -680,7 +680,7 @@ class GeodataGUI:
         self.root.mainloop()
 
 def main():
-    gui = GeodataGUI()
+    gui = GeoCompareGUI()
     gui.activate_mainloop()
 
 

@@ -1,28 +1,27 @@
-import pandas as pd
-import numpy as np
-import json
-import re
-
-from geocompare.datainterface.DemographicProfile import DemographicProfile
-from geocompare.datainterface.GeoVector import GeoVector
-from geocompare.tools.geodata_typecast import gdt, gdti, gdtf
-from geocompare.tools.StateTools import StateTools
-# from initialize_sqlalchemy import Base, engine, session
-
-from itertools import islice
-import sqlite3
 import csv
+import json
 import logging
-
+import re
+import sqlite3
 from collections import defaultdict
+
+# from initialize_sqlalchemy import Base, engine, session
+from itertools import islice
 from pathlib import Path
-import sys
+
+import numpy as np
+import pandas as pd
+
+from geocompare.models.demographic_profile import DemographicProfile
+from geocompare.models.geovector import GeoVector
+from geocompare.tools.numeric import parse_number
+from geocompare.tools.StateTools import StateTools
 
 logger = logging.getLogger(__name__)
 
 
 class Database:
-    '''Creates data products for use by geodata.'''
+    '''Creates data products for use by geocompare.'''
     LINE_NUMBERS_DICT = {
         'B01003': ['1'],   # TOTAL POPULATION
         'B01001': [        # SEX BY AGE (selected lines)
@@ -327,7 +326,7 @@ class Database:
     # ido = id_offset: Set it to one if there is an id that columns should
     # ignore. Otherwise, if there is no seperate id column, set it 0.
     def create_table(self, table_name, columns, column_defs, rows, ido=1):
-        '''Create a table for use by geodata.'''
+        '''Create a staging table for geocompare.'''
         # DBAPI question mark substring
         columns_len = len(column_defs) - ido
         question_mark_substr = self.dbapi_qm_substr(columns_len)
@@ -820,8 +819,8 @@ class Database:
         # Debug output
         self.debug_output_table(this_table_name)
 
-        # geodata #############################################################
-        this_table_name = 'geodata'
+        # geocompare_data ######################################################
+        this_table_name = 'geocompare_data'
         self._progress("Merging geographies, geoheaders, and ACS data")
 
         # Combine data from places, geoheaders, and data into a single table.
@@ -888,7 +887,7 @@ class Database:
         # Create a placeholder for DemographicProfiles
         self.demographicprofiles = []
 
-        for row in self.c.execute('SELECT * from geodata'):
+        for row in self.c.execute('SELECT * from geocompare_data'):
             try:
                 self.demographicprofiles.append(DemographicProfile(row))
             except AttributeError as e:
@@ -926,9 +925,9 @@ class Database:
             'B25077_1',
         ]
         rows = []
-        for row in self.c.execute('SELECT * from geodata'):
+        for row in self.c.execute('SELECT * from geocompare_data'):
             try: 
-                rows.append([gdt(row[column]) for column in metric_columns])
+                rows.append([parse_number(row[column]) for column in metric_columns])
             except AttributeError:
                 logger.exception('AttributeError while preparing medians/std dev dataframe')
 
@@ -955,7 +954,7 @@ class Database:
 
         self.geovectors = []
 
-        for row in self.c.execute('SELECT * from geodata'):
+        for row in self.c.execute('SELECT * from geocompare_data'):
             try:
                 # Construct a GeoVector and append it to self.geovectors.
                 self.geovectors.append(

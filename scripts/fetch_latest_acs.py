@@ -891,7 +891,10 @@ def main() -> int:
     parser.add_argument("--out-dir", default="../000-data", help="output directory (default: ../000-data)")
     parser.add_argument("--acs-year", help="ACS year to fetch (default: latest discovered)")
     parser.add_argument("--gazetteer-year", help="gazetteer year (default: latest discovered)")
-    parser.add_argument("--states", help="comma-separated states (default: all expected by geodata + us)")
+    parser.add_argument(
+        "--states",
+        help="comma-separated states (default: all expected by geocompare + us)",
+    )
     parser.add_argument("--overwrite", action="store_true", help="overwrite existing complete files")
     mode_group = parser.add_mutually_exclusive_group()
     mode_group.add_argument(
