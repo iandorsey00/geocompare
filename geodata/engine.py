@@ -1,11 +1,10 @@
-from pathlib import Path
-
 import csv
 import heapq
 import logging
 import operator
 import sys
 from math import atan2, cos, radians, sin, sqrt
+from pathlib import Path
 
 import geopy.distance
 import numpy
@@ -13,22 +12,23 @@ from rapidfuzz import fuzz
 
 try:
     from geodata.database.Database import Database
-    from geodata.repository.sqlite_repository import SQLiteRepository
     from geodata.identity.place_identity import PlaceIdentityIndex
-    from geodata.tools.geodata_typecast import gdt
+    from geodata.repository.sqlite_repository import SQLiteRepository
     from geodata.tools.CountyTools import CountyTools
-    from geodata.tools.StateTools import StateTools
+    from geodata.tools.geodata_typecast import gdt
     from geodata.tools.KeyTools import KeyTools
+    from geodata.tools.StateTools import StateTools
     from geodata.tools.SummaryLevelTools import SummaryLevelTools
 except ImportError:  # pragma: no cover - script execution fallback
     from database.Database import Database
-    from repository.sqlite_repository import SQLiteRepository
     from identity.place_identity import PlaceIdentityIndex
-    from tools.geodata_typecast import gdt
+    from repository.sqlite_repository import SQLiteRepository
     from tools.CountyTools import CountyTools
-    from tools.StateTools import StateTools
+    from tools.geodata_typecast import gdt
     from tools.KeyTools import KeyTools
+    from tools.StateTools import StateTools
     from tools.SummaryLevelTools import SummaryLevelTools
+
 
 class Engine:
     def __init__(self):
@@ -39,7 +39,7 @@ class Engine:
         self.slt = SummaryLevelTools()
 
         self.PROJECT_ROOT = Path(__file__).resolve().parents[1]
-        self.sqlite_path = self.PROJECT_ROOT / 'bin' / 'default.sqlite'
+        self.sqlite_path = self.PROJECT_ROOT / "bin" / "default.sqlite"
 
         self.sqlite_repository = SQLiteRepository(self.sqlite_path)
         self.primary_repository = self.sqlite_repository
@@ -48,36 +48,34 @@ class Engine:
         self._dp_by_name = {}
         self._gv_by_name = {}
         self.identity_index = None
-            
+
     def create_data_products(self, data_path):
-        '''Generate and save data products.'''
+        """Generate and save data products."""
         products = Database(data_path).get_products()
 
         # Write data products to SQLite.
         self.primary_repository.save_data_products(products)
 
         self._set_data_products(products)
-        self.logger.info('Data product write completed.')
+        self.logger.info("Data product write completed.")
 
     def load_data_products(self):
-        '''Load data products.'''
+        """Load data products."""
         return self.primary_repository.load_data_products()
 
     def _set_data_products(self, data_products):
-        '''Set in-memory data products and query indexes.'''
+        """Set in-memory data products and query indexes."""
         self.d = data_products
 
-        demographicprofiles = self.d.get('demographicprofiles', [])
-        geovectors = self.d.get('geovectors', [])
+        demographicprofiles = self.d.get("demographicprofiles", [])
+        geovectors = self.d.get("geovectors", [])
 
         self._dp_by_name = {dp.name: dp for dp in demographicprofiles}
         self._gv_by_name = {gv.name: gv for gv in geovectors}
-        self.identity_index = PlaceIdentityIndex.from_demographic_profiles(
-            demographicprofiles
-        )
+        self.identity_index = PlaceIdentityIndex.from_demographic_profiles(demographicprofiles)
 
     def refresh_cache(self):
-        '''Reload data products and query indexes.'''
+        """Reload data products and query indexes."""
         self._set_data_products(self.load_data_products())
 
     def get_data_products(self):
@@ -88,13 +86,11 @@ class Engine:
     def _lookup_dp(self, display_label):
         dp = self._dp_by_name.get(display_label)
         if dp is None:
-            raise ValueError(f'No geography found for display label: {display_label}')
+            raise ValueError(f"No geography found for display label: {display_label}")
         return dp
 
-    def resolve_geography(
-        self, query, state=None, sumlevel=None, population=None, n=5, **kwargs
-    ):
-        '''Resolve an input geography string to likely canonical matches.'''
+    def resolve_geography(self, query, state=None, sumlevel=None, population=None, n=5, **kwargs):
+        """Resolve an input geography string to likely canonical matches."""
         self.get_data_products()
         return self.identity_index.resolve(
             query,
@@ -107,14 +103,14 @@ class Engine:
     def _lookup_gv(self, display_label):
         gv = self._gv_by_name.get(display_label)
         if gv is None:
-            raise ValueError(f'No geography found for display label: {display_label}')
+            raise ValueError(f"No geography found for display label: {display_label}")
         return gv
 
     def _repo_supports(self, method_name):
         return hasattr(self.primary_repository, method_name)
 
     def _get_county_geoid(self, state_abbrev):
-        key = 'us:' + state_abbrev + '/county'
+        key = "us:" + state_abbrev + "/county"
         county_name = self.kt.key_to_county_name[key]
         return self.ct.county_name_to_geoid[county_name]
 
@@ -123,19 +119,19 @@ class Engine:
             return []
 
         conditions = []
-        filter_criteria = map(lambda x: x.split(':'), geofilter.split('+'))
+        filter_criteria = map(lambda x: x.split(":"), geofilter.split("+"))
         for criteria in filter_criteria:
             if len(criteria) < 3:
-                raise ValueError('filter: Invalid criteria')
+                raise ValueError("filter: Invalid criteria")
 
             data_type = criteria[3] if len(criteria) == 4 else False
             comp = criteria[0]
             sort_by, _ = self.get_data_types(comp, data_type, fetch_one)
             conditions.append(
                 {
-                    'column': f'{sort_by}_{comp}',
-                    'operator': criteria[1],
-                    'value': gdt(criteria[2]),
+                    "column": f"{sort_by}_{comp}",
+                    "operator": criteria[1],
+                    "value": gdt(criteria[2]),
                 }
             )
 
@@ -144,48 +140,46 @@ class Engine:
     def _build_sql_query_params(self, context, geofilter, fetch_one):
         universe_sl, group_sl, group = self.slt.unpack_context(context)
         county_geoid = None
-        if group_sl == '050':
+        if group_sl == "050":
             county_geoid = self._get_county_geoid(group)
 
         return {
-            'universe_sl': universe_sl,
-            'group_sl': group_sl,
-            'group': group,
-            'county_geoid': county_geoid,
-            'geofilter_conditions': self._build_sql_geofilter_conditions(
-                geofilter, fetch_one
-            ),
+            "universe_sl": universe_sl,
+            "group_sl": group_sl,
+            "group": group,
+            "county_geoid": county_geoid,
+            "geofilter_conditions": self._build_sql_geofilter_conditions(geofilter, fetch_one),
         }
 
     def get_data_types(self, comp, data_type, fetch_one):
-        '''
+        """
         Determine whether we want components (values that come straight from
         Census data files) or compounds (values that can only be obtained by
         math operations involving multiple components).
 
         By default, display compounds if there is one for the comp.
         Otherwise, display a component.
-        '''
+        """
         if not data_type:
             if comp in fetch_one.c.keys():
-                sort_by = 'c'
-                print_ = 'fcd'
+                sort_by = "c"
+                print_ = "fcd"
             else:
-                sort_by = 'rc'
-                print_ = 'fc'
+                sort_by = "rc"
+                print_ = "fc"
         # User input 'c', so display a component
-        elif data_type == 'c':
-            sort_by = 'rc'
-            print_ = 'fc'
+        elif data_type == "c":
+            sort_by = "rc"
+            print_ = "fc"
         # User input 'cc' (or anything else...), so display a compound
         else:
-            sort_by = 'c'
-            print_ = 'fcd'
+            sort_by = "c"
+            print_ = "fcd"
 
         return (sort_by, print_)
 
     def context_filter(self, input_instances, context, geofilter, gv=False):
-        '''Filters instances and leaves those that match the context.'''
+        """Filters instances and leaves those that match the context."""
         if len(input_instances) == 0:
             return []
 
@@ -195,37 +189,34 @@ class Engine:
 
         # Filter by summary level
         if universe_sl:
-            instances \
-                = list(filter(lambda x: x.sumlevel == universe_sl, instances))
+            instances = list(filter(lambda x: x.sumlevel == universe_sl, instances))
 
         # Filter by group summary level
-        if group_sl == '050':
-            key = 'us:' + group + '/county'
+        if group_sl == "050":
+            key = "us:" + group + "/county"
             county_name = self.kt.key_to_county_name[key]
             county_geoid = self.ct.county_name_to_geoid[county_name]
 
-            instances = list(filter(lambda x: county_geoid in x.counties,
-                                    instances))
-        elif group_sl == '040':
+            instances = list(filter(lambda x: county_geoid in x.counties, instances))
+        elif group_sl == "040":
             instances = list(filter(lambda x: x.state == group, instances))
-        elif group_sl == '860':
-            instances = list(filter(lambda x: x.name.startswith('ZCTA5 ' + group),
-                                    instances))
+        elif group_sl == "860":
+            instances = list(filter(lambda x: x.name.startswith("ZCTA5 " + group), instances))
 
         # Filtering
         if geofilter:
             operators = {
-                'gt': operator.gt,
-                'gteq': operator.ge,
-                'eq': operator.eq,
-                'lteq': operator.le,
-                'lt': operator.lt,
+                "gt": operator.gt,
+                "gteq": operator.ge,
+                "eq": operator.eq,
+                "lteq": operator.le,
+                "lt": operator.lt,
             }
 
             # Convert pipe-delimited criteria string to a list of criteria
-            filter_criteria = geofilter.split('+')
+            filter_criteria = geofilter.split("+")
             # Covert list of criteria to lists of lists
-            filter_criteria = map(lambda x: x.split(':'), filter_criteria)
+            filter_criteria = map(lambda x: x.split(":"), filter_criteria)
 
             for filter_criterium in filter_criteria:
                 # Determine if a data_type was specified
@@ -238,13 +229,13 @@ class Engine:
 
                 comp = filter_criterium[0]
                 filter_by, print_ = self.get_data_types(comp, data_type, fetch_one)
-                operator = filter_criterium[1]
+                operator_key = filter_criterium[1]
 
                 # The value is a index 2; convert using geodata_typecast
                 value = gdt(filter_criterium[2])
 
                 # Now, filter by operator at index 1.
-                compare = operators.get(operator)
+                compare = operators.get(operator_key)
                 if compare is None:
                     raise ValueError("filter: Invalid operator")
 
@@ -254,11 +245,11 @@ class Engine:
 
         return instances
 
-    def compare_geovectors(self, display_label, context='', n=10, mode='std', **kwargs):
-        '''Compare GeoVectors.'''
+    def compare_geovectors(self, display_label, context="", n=10, mode="std", **kwargs):
+        """Compare GeoVectors."""
         d = self.get_data_products()
 
-        gv_list = d['geovectors']
+        gv_list = d["geovectors"]
 
         # Obtain the GeoVector for which we entered a name.
         comparison_gv = self._lookup_gv(display_label)
@@ -267,8 +258,7 @@ class Engine:
         if context:
             gv_list = self.context_filter(gv_list, context, False)
         else:
-            gv_list = list(filter(lambda x: x.sumlevel == comparison_gv.sumlevel,
-                                gv_list))
+            gv_list = list(filter(lambda x: x.sumlevel == comparison_gv.sumlevel, gv_list))
 
         if n <= 0:
             return []
@@ -281,14 +271,14 @@ class Engine:
             key=lambda x: comparison_gv.distance(x, mode=mode),
         )
 
-    def compare_geovectors_app(self, display_label, context='', n=10):
-        return self.compare_geovectors(display_label, context=context, n=n, mode='app')
+    def compare_geovectors_app(self, display_label, context="", n=10):
+        return self.compare_geovectors(display_label, context=context, n=n, mode="app")
 
     def get_dp(self, display_label, **kwargs):
-        '''Get DemographicProfiles.'''
+        """Get DemographicProfiles."""
         self.get_data_products()
 
-        if self._repo_supports('get_demographic_profile'):
+        if self._repo_supports("get_demographic_profile"):
             try:
                 dp = self.primary_repository.get_demographic_profile(display_label)
                 if dp is not None:
@@ -298,35 +288,37 @@ class Engine:
 
         return [self._lookup_dp(display_label)]
 
-    def extreme_values(self, comp, data_type='c', context='', geofilter='', n=10, lowest=False, **kwargs):
-        '''Get highest and lowest values.'''
+    def extreme_values(
+        self, comp, data_type="c", context="", geofilter="", n=10, lowest=False, **kwargs
+    ):
+        """Get highest and lowest values."""
         d = self.get_data_products()
 
         comp = comp
         data_type = data_type
 
-        dpi_instances = d['demographicprofiles']
+        dpi_instances = d["demographicprofiles"]
         fetch_one = dpi_instances[0]
 
         sort_by, print_ = self.get_data_types(comp, data_type, fetch_one)
         if n <= 0:
             n = len(dpi_instances)
 
-        if self._repo_supports('query_extreme_profile_names'):
+        if self._repo_supports("query_extreme_profile_names"):
             sql_params = self._build_sql_query_params(context, geofilter, fetch_one)
 
             exclude_values = []
-            if comp == 'median_year_structure_built' and sort_by == 'rc':
+            if comp == "median_year_structure_built" and sort_by == "rc":
                 exclude_values = [0, 18]
 
             try:
                 names = self.primary_repository.query_extreme_profile_names(
-                    comp_column=f'{sort_by}_{comp}',
-                    universe_sl=sql_params['universe_sl'],
-                    group_sl=sql_params['group_sl'],
-                    group=sql_params['group'],
-                    county_geoid=sql_params['county_geoid'],
-                    geofilter_conditions=sql_params['geofilter_conditions'],
+                    comp_column=f"{sort_by}_{comp}",
+                    universe_sl=sql_params["universe_sl"],
+                    group_sl=sql_params["group_sl"],
+                    group=sql_params["group"],
+                    county_geoid=sql_params["county_geoid"],
+                    geofilter_conditions=sql_params["geofilter_conditions"],
                     n=n,
                     lowest=lowest,
                     exclude_values=exclude_values,
@@ -334,37 +326,42 @@ class Engine:
                 return [self._lookup_dp(name) for name in names]
             except RuntimeError:
                 pass
-        
+
         # Remove numpy.nans because they interfere with sorted()
-        dpi_instances = list(filter(lambda x: not \
-                    numpy.isnan(getattr(x, sort_by)[comp]), dpi_instances))
+        dpi_instances = list(
+            filter(lambda x: not numpy.isnan(getattr(x, sort_by)[comp]), dpi_instances)
+        )
 
         # Filter instances
         dpi_instances = self.context_filter(dpi_instances, context, geofilter)
 
         # For the median_year_structure_built component, remove values of zero and
         # 18...
-        if comp == 'median_year_structure_built':
-            dpi_instances = list(filter(lambda x: not \
-                x.rc['median_year_structure_built'] == 0, dpi_instances))
-            dpi_instances = list(filter(lambda x: not \
-                x.rc['median_year_structure_built'] == 18, dpi_instances))
+        if comp == "median_year_structure_built":
+            dpi_instances = list(
+                filter(lambda x: not x.rc["median_year_structure_built"] == 0, dpi_instances)
+            )
+            dpi_instances = list(
+                filter(lambda x: not x.rc["median_year_structure_built"] == 18, dpi_instances)
+            )
 
         # Sort our DemographicProfile instances by component or compound specified.
         if lowest:
             return heapq.nsmallest(n, dpi_instances, key=lambda x: getattr(x, sort_by)[comp])
         return heapq.nlargest(n, dpi_instances, key=lambda x: getattr(x, sort_by)[comp])
 
-    def lowest_values(self, comp, data_type='c', context='', geofilter='', n=10, **kwargs):
-        '''Wrapper function for lowest values.'''
-        return self.extreme_values(comp, data_type=data_type, context=context, geofilter=geofilter, n=n,  lowest=True)
+    def lowest_values(self, comp, data_type="c", context="", geofilter="", n=10, **kwargs):
+        """Wrapper function for lowest values."""
+        return self.extreme_values(
+            comp, data_type=data_type, context=context, geofilter=geofilter, n=n, lowest=True
+        )
 
     def display_label_search(self, query, n=10, **kwargs):
-        '''Search display labels (place names).'''
+        """Search display labels (place names)."""
         if n <= 0:
             return []
 
-        if self._repo_supports('search_demographic_profiles'):
+        if self._repo_supports("search_demographic_profiles"):
             try:
                 return self.primary_repository.search_demographic_profiles(query, n)
             except RuntimeError:
@@ -372,50 +369,46 @@ class Engine:
 
         d = self.get_data_products()
 
-        dpi_instances = d['demographicprofiles']
+        dpi_instances = d["demographicprofiles"]
         return heapq.nlargest(
             n,
             dpi_instances,
             key=lambda x: fuzz.token_set_ratio(query, x.name),
         )
 
-    def rows(self, comps, context='', geofilter='', **kwargs):
-        '''Output data to a CSV file'''
-        # Note: n is not yet implemented.
-        # TODO: Permit -n 0 to mean 'all values'
-
+    def rows(self, comps, context="", geofilter="", n=0, **kwargs):
+        """Output data to a CSV file"""
         d = self.get_data_products()
-        dpi_instances = d['demographicprofiles']
+        dpi_instances = d["demographicprofiles"]
         fetch_one = dpi_instances[0]
 
         # Categories: Groups of >= 1 comp(s)
         categories = {
-            ':geography': ['land_area'],
-
-            ':population': ['population',
-                            'population_density'],
-
-            ':race': ['white_alone', 
-                    'white_alone_not_hispanic_or_latino',
-                    'black_alone',
-                    'asian_alone',
-                    'other_race',
-                    'hispanic_or_latino'],
-
-            ':education': ['population_25_years_and_older',
-                            'bachelors_degree_or_higher',
-                            'graduate_degree_or_higher'],
-
-            ':income': ['per_capita_income',
-                        'median_household_income'],
-
-            ':housing': ['median_year_structure_built',
-                        'median_rooms',
-                        'median_value',
-                        'median_rent'],
+            ":geography": ["land_area"],
+            ":population": ["population", "population_density"],
+            ":race": [
+                "white_alone",
+                "white_alone_not_hispanic_or_latino",
+                "black_alone",
+                "asian_alone",
+                "other_race",
+                "hispanic_or_latino",
+            ],
+            ":education": [
+                "population_25_years_and_older",
+                "bachelors_degree_or_higher",
+                "graduate_degree_or_higher",
+            ],
+            ":income": ["per_capita_income", "median_household_income"],
+            ":housing": [
+                "median_year_structure_built",
+                "median_rooms",
+                "median_value",
+                "median_rent",
+            ],
         }
 
-        comps = comps.split(' ')
+        comps = comps.split(" ")
         comp_list = list()
 
         # Replace categories with comps and validate comps
@@ -425,18 +418,18 @@ class Engine:
             elif comp in fetch_one.rh:
                 comp_list += [comp]
             else:
-                raise ValueError(comp + ': Invalid comp')
+                raise ValueError(comp + ": Invalid comp")
 
         # Filter instances
-        if self._repo_supports('query_profile_names'):
+        if self._repo_supports("query_profile_names"):
             try:
                 sql_params = self._build_sql_query_params(context, geofilter, fetch_one)
                 names = self.primary_repository.query_profile_names(
-                    universe_sl=sql_params['universe_sl'],
-                    group_sl=sql_params['group_sl'],
-                    group=sql_params['group'],
-                    county_geoid=sql_params['county_geoid'],
-                    geofilter_conditions=sql_params['geofilter_conditions'],
+                    universe_sl=sql_params["universe_sl"],
+                    group_sl=sql_params["group_sl"],
+                    group=sql_params["group"],
+                    county_geoid=sql_params["county_geoid"],
+                    geofilter_conditions=sql_params["geofilter_conditions"],
                 )
                 dpi_instances = [self._lookup_dp(name) for name in names]
             except RuntimeError:
@@ -445,18 +438,23 @@ class Engine:
             dpi_instances = self.context_filter(dpi_instances, context, geofilter)
 
         if len(dpi_instances) == 0:
-            raise ValueError('Sorry, no geographies match your criteria.')
+            raise ValueError("Sorry, no geographies match your criteria.")
+
+        # Keep export ordering deterministic regardless of source path.
+        dpi_instances = sorted(dpi_instances, key=lambda x: x.name)
+        if n and n > 0:
+            dpi_instances = dpi_instances[:n]
 
         # Intialize csvwriter
         csvwriter = csv.writer(sys.stdout, quoting=csv.QUOTE_MINIMAL)
 
         # Header row
-        this_row = ['Geography', 'County']
+        this_row = ["Geography", "County"]
 
         for comp in comp_list:
             if comp in fetch_one.rc.keys() and comp in fetch_one.c.keys():
-                this_row += [fetch_one.rh[comp] + ' (c)']
-                this_row += [fetch_one.rh[comp] + ' (cc)']
+                this_row += [fetch_one.rh[comp] + " (c)"]
+                this_row += [fetch_one.rh[comp] + " (cc)"]
             else:
                 this_row += [fetch_one.rh[comp]]
 
@@ -464,7 +462,7 @@ class Engine:
 
         # All other rows
         for dpi_instance in dpi_instances:
-            this_row = [dpi_instance.name, ', '.join(dpi_instance.counties_display)]
+            this_row = [dpi_instance.name, ", ".join(dpi_instance.counties_display)]
 
             for comp in comp_list:
                 if comp in dpi_instance.rc.keys() and comp in dpi_instance.c.keys():
@@ -478,16 +476,16 @@ class Engine:
             csvwriter.writerow(this_row)
 
     def get_csv_dp(self, display_label, **kwargs):
-        '''Output a DemographicProfile in CSV format'''
+        """Output a DemographicProfile in CSV format"""
         self.get_data_products()
         dp = self._lookup_dp(display_label)
         dp.tocsv()
 
     def get_distance(self, dp1, dp2, kilometers=False):
-        '''Distance between two sets of lat/long coords from DemographicProfiles'''
+        """Distance between two sets of lat/long coords from DemographicProfiles"""
 
-        coords1 = (dp1.rc['latitude'], dp1.rc['longitude'])
-        coords2 = (dp2.rc['latitude'], dp2.rc['longitude'])
+        coords1 = (dp1.rc["latitude"], dp1.rc["longitude"])
+        coords2 = (dp2.rc["latitude"], dp2.rc["longitude"])
 
         if kilometers:
             distance = geopy.distance.distance(coords1, coords2).km
@@ -497,7 +495,7 @@ class Engine:
         return distance
 
     def _haversine_miles(self, lat1, lon1, lat2, lon2):
-        '''Fast great-circle distance in miles.'''
+        """Fast great-circle distance in miles."""
         r_miles = 3958.7613
         phi1 = radians(lat1)
         phi2 = radians(lat2)
@@ -509,10 +507,10 @@ class Engine:
         return r_miles * c
 
     def distance(self, display_label_1, display_label_2, kilometers=False, **kwargs):
-        '''Get the distance between two geographies'''
+        """Get the distance between two geographies"""
         self.get_data_products()
 
-        if self._repo_supports('get_coordinates'):
+        if self._repo_supports("get_coordinates"):
             try:
                 coords1 = self.primary_repository.get_coordinates(display_label_1)
                 coords2 = self.primary_repository.get_coordinates(display_label_2)
@@ -529,12 +527,12 @@ class Engine:
 
         return self.get_distance(dp1, dp2, kilometers)
 
-    def closest_geographies(self, display_label, context='', geofilter='', n=10, **kwargs):
-        '''Display the closest geographies'''
+    def closest_geographies(self, display_label, context="", geofilter="", n=10, **kwargs):
+        """Display the closest geographies"""
         d = self.get_data_products()
 
         target_geo = self._lookup_dp(display_label)
-        dpi_instances = d['demographicprofiles']
+        dpi_instances = d["demographicprofiles"]
         # Remove numpy.nans because they interfere with sorted()
         # dpi_instances = list(filter(lambda x: not \
         #                numpy.isnan(getattr(x, sort_by)[comp]), dpi_instances))
@@ -542,10 +540,10 @@ class Engine:
         if n <= 0:
             return []
 
-        if self._repo_supports('query_profile_coordinates'):
+        if self._repo_supports("query_profile_coordinates"):
             try:
                 sql_params = self._build_sql_query_params(context, geofilter, target_geo)
-                target_coords = (target_geo.rc['latitude'], target_geo.rc['longitude'])
+                target_coords = (target_geo.rc["latitude"], target_geo.rc["longitude"])
                 target_lat, target_lon = target_coords
 
                 # Progressively widen bounding box until we have enough candidates.
@@ -558,18 +556,18 @@ class Engine:
                         lon_scale = max(0.2, cos(radians(target_lat)))
                         lon_delta = degrees / lon_scale
                         kwargs = {
-                            'min_latitude': target_lat - degrees,
-                            'max_latitude': target_lat + degrees,
-                            'min_longitude': target_lon - lon_delta,
-                            'max_longitude': target_lon + lon_delta,
+                            "min_latitude": target_lat - degrees,
+                            "max_latitude": target_lat + degrees,
+                            "min_longitude": target_lon - lon_delta,
+                            "max_longitude": target_lon + lon_delta,
                         }
 
                     coords_rows = self.primary_repository.query_profile_coordinates(
-                        universe_sl=sql_params['universe_sl'],
-                        group_sl=sql_params['group_sl'],
-                        group=sql_params['group'],
-                        county_geoid=sql_params['county_geoid'],
-                        geofilter_conditions=sql_params['geofilter_conditions'],
+                        universe_sl=sql_params["universe_sl"],
+                        group_sl=sql_params["group_sl"],
+                        group=sql_params["group"],
+                        county_geoid=sql_params["county_geoid"],
+                        geofilter_conditions=sql_params["geofilter_conditions"],
                         exclude_name=target_geo.name,
                         **kwargs,
                     )
@@ -580,9 +578,7 @@ class Engine:
                 for name, latitude, longitude in coords_rows:
                     if latitude is None or longitude is None:
                         continue
-                    distance = self._haversine_miles(
-                        target_lat, target_lon, latitude, longitude
-                    )
+                    distance = self._haversine_miles(target_lat, target_lon, latitude, longitude)
                     dp_distances.append((self._lookup_dp(name), distance))
 
                 return heapq.nsmallest(n, dp_distances, key=lambda x: x[1])
@@ -597,10 +593,10 @@ class Engine:
         for dp in dpi_instances:
             if dp.name != target_geo.name:
                 distance = self._haversine_miles(
-                    target_geo.rc['latitude'],
-                    target_geo.rc['longitude'],
-                    dp.rc['latitude'],
-                    dp.rc['longitude'],
+                    target_geo.rc["latitude"],
+                    target_geo.rc["longitude"],
+                    dp.rc["latitude"],
+                    dp.rc["longitude"],
                 )
                 dp_distances.append((dp, distance))
 

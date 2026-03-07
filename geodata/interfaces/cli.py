@@ -1,5 +1,7 @@
 import argparse
+import json
 import logging
+import sys
 
 try:
     from geodata.services.query_service import QueryService
@@ -59,6 +61,15 @@ class GeodataCLI:
         )
         search_parser.add_argument("query", help="search query")
         search_parser.add_argument("-n", type=int, default=15, help="number of results to display")
+        search_parser.add_argument(
+            "--format",
+            choices=["table", "json", "csv"],
+            default="table",
+            help="output format",
+        )
+        search_parser.add_argument(
+            "--wide", action="store_true", help="wider output without truncation"
+        )
         search_parser.set_defaults(func=self.display_label_search)
 
         profile_parser = query_subparsers.add_parser(
@@ -126,6 +137,15 @@ class GeodataCLI:
         resolve_parser.add_argument("--sumlevel", help="optional summary level filter, e.g. 160")
         resolve_parser.add_argument("--population", type=int, help="optional population hint")
         resolve_parser.add_argument("-n", type=int, default=5, help="number of matches to return")
+        resolve_parser.add_argument(
+            "--format",
+            choices=["table", "json", "csv"],
+            default="table",
+            help="output format",
+        )
+        resolve_parser.add_argument(
+            "--wide", action="store_true", help="wider output without truncation"
+        )
         resolve_parser.set_defaults(func=self.resolve_geography)
 
         export_parser = subparsers.add_parser(
@@ -160,6 +180,15 @@ class GeodataCLI:
         legacy_search_parser.add_argument(
             "-n", type=int, default=15, help="number of results to display"
         )
+        legacy_search_parser.add_argument(
+            "--format",
+            choices=["table", "json", "csv"],
+            default="table",
+            help="output format",
+        )
+        legacy_search_parser.add_argument(
+            "--wide", action="store_true", help="wider output without truncation"
+        )
         legacy_search_parser.set_defaults(func=self.display_label_search)
 
         args = parser.parse_args()
@@ -182,17 +211,40 @@ class GeodataCLI:
         self.engine.create_data_products(args.path)
         print("Data product write completed.")
 
+    def _eprint(self, msg):
+        print(msg, file=sys.stderr)
+
+    def _fit(self, value, width, truncate=True):
+        text = str(value)
+        if truncate and len(text) > width:
+            return text[:width]
+        return text.ljust(width)
+
     def display_label_search(self, args):
         search_results = self.engine.display_label_search(**vars(args))
+        if args.format == "json":
+            payload = [
+                {"name": r.name, "population": r.fc["population"]} for r in search_results[: args.n]
+            ]
+            print(json.dumps(payload, indent=2))
+            return
+        if args.format == "csv":
+            print("Name,Population")
+            for r in search_results[: args.n]:
+                print(f'"{r.name}","{r.fc["population"]}"')
+            return
+
+        name_width = 70 if args.wide else 45
+        truncate = not args.wide
 
         def print_search_divider():
-            return "-" * 68
+            return "-" * (name_width + 23)
 
         def print_search_result(dpi):
             iam = " "
             out_str = (
                 iam
-                + getattr(dpi, "name").ljust(45)[:45]
+                + self._fit(getattr(dpi, "name"), name_width, truncate=truncate)
                 + iam
                 + getattr(dpi, "fc")["population"].rjust(20)
             )
@@ -200,7 +252,12 @@ class GeodataCLI:
 
         print(print_search_divider())
         iam = " "
-        print(iam + "Search results".ljust(45)[:45] + iam + "Total population".rjust(20))
+        print(
+            iam
+            + self._fit("Search results", name_width, truncate=truncate)
+            + iam
+            + "Total population".rjust(20)
+        )
         print(print_search_divider())
         for dpi_instance in search_results[: args.n]:
             print(print_search_result(dpi_instance))
@@ -209,42 +266,57 @@ class GeodataCLI:
     def get_dp(self, args):
         dp_list = self.engine.get_dp(**vars(args))
         if len(dp_list) == 0:
-            print("Sorry, there is no geography with that name.")
+            self._eprint("Sorry, there is no geography with that name.")
             return
         print(dp_list[0])
 
     def resolve_geography(self, args):
         matches = self.engine.resolve_geography(**vars(args))
         if len(matches) == 0:
-            print("No matches found.")
+            self._eprint("No matches found.")
+            return
+        if args.format == "json":
+            print(json.dumps(matches[: args.n], indent=2))
+            return
+        if args.format == "csv":
+            print("canonical_id,sumlevel,state,population,name")
+            for m in matches[: args.n]:
+                pop = m.get("population")
+                pop_display = "" if pop is None else int(pop)
+                print(
+                    f'"{m["canonical_id"]}","{m["sumlevel"]}","{m["state"]}","{pop_display}","{m["name"]}"'
+                )
             return
 
-        print("-" * 96)
+        id_width = 54 if args.wide else 38
+
+        print("-" * (id_width + 58))
         print(
-            " Canonical ID".ljust(38),
+            " Canonical ID".ljust(id_width),
             "Summary Level".ljust(15),
             "State".ljust(7),
             "Population".rjust(12),
             " Name",
         )
-        print("-" * 96)
+        print("-" * (id_width + 58))
         for match in matches:
             pop = match.get("population")
             pop_display = "" if pop is None else f"{int(pop):,}"
+            cid = match["canonical_id"] if args.wide else match["canonical_id"][:36]
             print(
-                f" {match['canonical_id'][:36].ljust(38)}"
+                f" {cid.ljust(id_width)}"
                 f" {match['sumlevel'].ljust(15)}"
                 f" {match['state'].ljust(7)}"
                 f" {pop_display.rjust(12)}"
                 f" {match['name']}"
             )
-        print("-" * 96)
+        print("-" * (id_width + 58))
 
     def compare_geovectors(self, args, mode="std"):
         closest_gvs = self.engine.compare_geovectors(**vars(args), mode=mode)
 
         if len(closest_gvs) == 0:
-            print("Sorry, no GeoVectors match your criteria.")
+            self._eprint("Sorry, no GeoVectors match your criteria.")
             return
 
         comparison_gv = closest_gvs[0]
@@ -286,7 +358,7 @@ class GeodataCLI:
     def extreme_values(self, args, lowest=False):
         evs = self.engine.extreme_values(**vars(args), lowest=lowest)
         if len(evs) == 0:
-            print("Sorry, no geographies match your criteria.")
+            self._eprint("Sorry, no geographies match your criteria.")
             return
 
         fetch_one = evs[0]
@@ -413,7 +485,7 @@ class GeodataCLI:
         universe_sl, group_sl, group = self.slt.unpack_context(args.context)
 
         if len(cgs) == 0:
-            print("Sorry, no geographies match your criteria.")
+            self._eprint("Sorry, no geographies match your criteria.")
             return
 
         print(divider())
