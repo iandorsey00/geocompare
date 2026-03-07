@@ -18,7 +18,7 @@ class GeodataGUI:
         self.dp_offset = 0
 
         self.root = tk.Tk()
-        self.root.title('geodata v0.2a')
+        self.root.title("GeoCompare")
         self.root.minsize(500, 20)
 
         self.engine = Engine()

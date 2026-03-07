@@ -4,6 +4,11 @@ import logging
 import sys
 
 try:
+    from geodata import __version__
+except ImportError:  # pragma: no cover - script execution fallback
+    from __init__ import __version__
+
+try:
     from geodata.services.query_service import QueryService
 except ImportError:  # pragma: no cover - script execution fallback
     from services.query_service import QueryService
@@ -21,14 +26,14 @@ class GeodataCLI:
         parser = argparse.ArgumentParser(
             description="Explore and compare geography data from your local data products.",
             epilog=(
-                'Examples: geodata build ~/data | geodata query search "san francisco" '
-                '| geodata query distance "San Francisco city, California" '
+                'Examples: geocompare build ~/data | geocompare query search "san francisco" '
+                '| geocompare query distance "San Francisco city, California" '
                 '"San Jose city, California"'
             ),
-            prog="geodata",
+            prog="geocompare",
         )
         subparsers = parser.add_subparsers(
-            help="enter geodata <command> -h for details",
+            help="enter geocompare <command> -h for details",
             dest="command",
             required=True,
         )
@@ -37,6 +42,11 @@ class GeodataCLI:
             choices=["DEBUG", "INFO", "WARNING", "ERROR"],
             default="WARNING",
             help="set diagnostics verbosity",
+        )
+        parser.add_argument(
+            "--version",
+            action="version",
+            version=f"geocompare {__version__}",
         )
 
         build_parser = subparsers.add_parser(
@@ -51,7 +61,7 @@ class GeodataCLI:
             "query", aliases=["view", "show", "q", "v"], help="query and compare geographies"
         )
         query_subparsers = query_parser.add_subparsers(
-            help="enter geodata query <command> -h for details",
+            help="enter geocompare query <command> -h for details",
             dest="query_command",
             required=True,
         )
@@ -152,7 +162,7 @@ class GeodataCLI:
             "export", aliases=["tocsv", "csv", "e", "t"], help="export data as CSV"
         )
         export_subparsers = export_parser.add_subparsers(
-            help="enter geodata export <command> -h for details",
+            help="enter geocompare export <command> -h for details",
             dest="export_command",
             required=True,
         )

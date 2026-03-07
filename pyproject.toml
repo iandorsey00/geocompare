@@ -3,9 +3,9 @@ requires = ["setuptools>=69", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "geodata"
-version = "0.4.0"
-description = "A program for getting information about and comparing geographies"
+name = "geocompare"
+dynamic = ["version"]
+description = "GeoCompare: compare demographic and geographic profiles for places"
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
@@ -28,11 +28,14 @@ dev = [
 ]
 
 [project.scripts]
-geodata = "geodata.interfaces.cli:main"
-geodata-gui = "geodata.interfaces.gui:main"
+geocompare = "geodata.interfaces.cli:main"
+geocompare-gui = "geodata.interfaces.gui:main"
 
 [tool.setuptools.packages.find]
 exclude = ["docs*", "old-2016-files*", "bin*"]
+
+[tool.setuptools.dynamic]
+version = { attr = "geodata.__version__" }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

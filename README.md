@@ -1,6 +1,6 @@
-# geodata
+# GeoCompare
 
-geodata is a program that allows users to easily view and organized and
+GeoCompare is a program that allows users to easily view and organized and
 processed demographic data without the need to modify any data files.
 
 ![geodata screenshot](https://raw.githubusercontent.com/iandorsey00/geodata/master/doc/img/geodata-screenshot.png "geodata screenshot")
@@ -9,6 +9,7 @@ This project supports geographies in the United States.
 
 See the [Wiki](https://github.com/iandorsey00/geodata/wiki) for documentation.
 Architecture details: [doc/architecture.md](doc/architecture.md).
+Versioning policy: [doc/versioning.md](doc/versioning.md).
 
 ## Install
 
@@ -21,25 +22,25 @@ python3 -m pip install -e .
 Build data products:
 
 ```bash
-geodata build /path/to/data
+geocompare build /path/to/data
 ```
 
 Query workflows:
 
 ```bash
-geodata query search "san francisco"
-geodata query profile "San Francisco city, California"
-geodata query top population -n 10
-geodata query nearest "San Francisco city, California" -n 10
-geodata query distance "San Francisco city, California" "San Jose city, California"
-geodata resolve "San Francisco, CA" --state ca -n 5
+geocompare query search "san francisco"
+geocompare query profile "San Francisco city, California"
+geocompare query top population -n 10
+geocompare query nearest "San Francisco city, California" -n 10
+geocompare query distance "San Francisco city, California" "San Jose city, California"
+geocompare resolve "San Francisco, CA" --state ca -n 5
 ```
 
 Export workflows:
 
 ```bash
-geodata export rows "population :income" -n 20
-geodata export profile "San Francisco city, California"
+geocompare export rows "population :income" -n 20
+geocompare export profile "San Francisco city, California"
 ```
 
 ## Diagnostics
@@ -47,7 +48,7 @@ geodata export profile "San Francisco city, California"
 Set verbosity when needed:
 
 ```bash
-geodata --log-level INFO build /path/to/data
+geocompare --log-level INFO build /path/to/data
 ```
 
 ## Quality Baseline
