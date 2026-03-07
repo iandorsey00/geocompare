@@ -143,3 +143,7 @@ bin/
 
 # User-defined scripts
 scripts/
+
+# Local overlay inputs (crime/project data)
+/overlays/*
+!/overlays/.gitkeep

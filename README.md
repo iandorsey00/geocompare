@@ -21,6 +21,20 @@ Build data products:
 geocompare build /path/to/data
 ```
 
+`build` now auto-detects the latest ACS year (`g<YEAR>5*.csv` + `e<YEAR>5*.txt`)
+and latest compatible gazetteer year (`<YEAR>_Gaz_*_national.txt`) in the input
+directory.
+
+Optional overlays can be placed in the same data directory:
+
+- `overlays/crime_data.csv` (or `crime_data.csv`)
+- `overlays/project_data.csv` (or `project_data.csv`)
+- `overlays/social_alignment.csv`
+
+Overlay files should include a `GEOID` column plus numeric metric columns.
+Crime metrics (column names containing `crime`) appear under a `CRIME` section
+in demographic profiles. Other overlay metrics appear under `PROJECT DATA`.
+
 Query workflows:
 
 ```bash

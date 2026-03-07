@@ -1,5 +1,7 @@
 import pandas as pd
 import numpy as np
+import json
+import re
 
 try:
     from geodata.datainterface.DemographicProfile import DemographicProfile
@@ -27,6 +29,29 @@ logger = logging.getLogger(__name__)
 
 class Database:
     '''Creates data products for use by geodata.'''
+    LINE_NUMBERS_DICT = {
+        'B01003': ['1'],   # TOTAL POPULATION
+        'B19301': ['1'],   # PER CAPITA INCOME IN THE PAST 12 MONTHS
+        'B02001': ['2', '3', '5'],  # RACE
+        'B03002': ['3', '12'],  # HISPANIC OR LATINO ORIGIN BY RACE
+        'B04004': ['51'],  # PEOPLE REPORTING SINGLE ANCESTRY - Italian
+        'B15003': ['1', '22', '23', '24', '25'],  # EDUCATIONAL ATTAINMENT
+        'B19013': ['1'],   # MEDIAN HOUSEHOLD INCOME
+        'B25035': ['1'],   # Median year structure built
+        'B25018': ['1'],   # Median number of rooms
+        'B25058': ['1'],   # Median contract rent
+        'B25077': ['1'],   # Median value
+    }
+
+    CRIME_METRIC_DEFS = [
+        ('violent_crime_count', 'Violent crime incidents', ''),
+        ('property_crime_count', 'Property crime incidents', ''),
+        ('total_crime_count', 'Total crime incidents', ''),
+        ('violent_crime_rate', 'Violent crime rate', '/100k'),
+        ('property_crime_rate', 'Property crime rate', '/100k'),
+        ('total_crime_rate', 'Total crime rate', '/100k'),
+    ]
+
     ###########################################################################
     # Helper methods for __init__
 
@@ -57,10 +82,206 @@ class Database:
             if candidate.exists():
                 return candidate
 
+        dynamic_candidates = sorted(path.glob('*_Gaz_state_national.txt'))
+        if dynamic_candidates:
+            return dynamic_candidates[-1]
+
         candidate_list = ', '.join(str(p.name) for p in candidates)
         raise FileNotFoundError(
             f'Unable to find a state gazetteer file. Expected one of: {candidate_list}'
         )
+
+    def detect_latest_acs_year(self, path):
+        years = []
+        for candidate in path.glob('g*5us.csv'):
+            match = re.match(r'^g(\d{4})5us\.csv$', candidate.name)
+            if match:
+                years.append(int(match.group(1)))
+        if not years:
+            raise FileNotFoundError(
+                'Unable to detect ACS year. Expected a g<YEAR>5us.csv file.'
+            )
+        return str(max(years))
+
+    def detect_latest_gazetteer_year(self, path):
+        years = []
+        for candidate in path.glob('*_Gaz_place_national.txt'):
+            match = re.match(r'^(\d{4})_Gaz_place_national\.txt$', candidate.name)
+            if match:
+                years.append(int(match.group(1)))
+        if not years:
+            raise FileNotFoundError(
+                'Unable to detect gazetteer year. Expected a <YEAR>_Gaz_place_national.txt file.'
+            )
+        return str(max(years))
+
+    def _normalize_geoid_keys(self, geoid):
+        geoid = geoid.strip()
+        keys = {geoid}
+        if 'US' in geoid:
+            keys.add(geoid.split('US', 1)[1])
+        if len(geoid) >= 7:
+            keys.add(geoid[7:])
+        return keys
+
+    def _iter_overlay_candidates(self, path):
+        overlay_dir = path / 'overlays'
+        candidates = [
+            path / 'crime_data.csv',
+            path / 'crime.csv',
+            overlay_dir / 'crime_data.csv',
+            overlay_dir / 'crime.csv',
+            path / 'project_data.csv',
+            overlay_dir / 'project_data.csv',
+            overlay_dir / 'social_alignment.csv',
+        ]
+        for candidate in candidates:
+            if candidate.exists():
+                yield candidate
+
+    def _load_csv_overlay(self, overlay_path):
+        with open(overlay_path, 'rt', newline='') as f:
+            reader = csv.DictReader(f)
+            rows = list(reader)
+        if not rows:
+            return {}
+
+        geoid_col = None
+        for col in rows[0].keys():
+            if col and col.strip().lower() == 'geoid':
+                geoid_col = col
+                break
+        if geoid_col is None:
+            logger.warning('Skipping overlay %s: missing GEOID column.', overlay_path.name)
+            return {}
+
+        overlays = {}
+        for row in rows:
+            geoid = (row.get(geoid_col) or '').strip()
+            if not geoid:
+                continue
+
+            metric_values = {}
+            for key, value in row.items():
+                if not key or key == geoid_col:
+                    continue
+                text = (value or '').strip()
+                if text == '':
+                    continue
+                try:
+                    metric_values[key.strip()] = float(text)
+                except ValueError:
+                    continue
+            if metric_values:
+                overlays[geoid] = metric_values
+        return overlays
+
+    def _load_json_overlay(self, overlay_path):
+        with open(overlay_path, 'rt') as f:
+            payload = json.load(f)
+        if not isinstance(payload, list):
+            logger.warning('Skipping overlay %s: expected a list of records.', overlay_path.name)
+            return {}
+
+        overlays = {}
+        for row in payload:
+            if not isinstance(row, dict):
+                continue
+            geoid = str(row.get('GEOID') or row.get('geoid') or '').strip()
+            if not geoid:
+                continue
+            metric_values = {}
+            for key, value in row.items():
+                if key in ('GEOID', 'geoid'):
+                    continue
+                if isinstance(value, (int, float)):
+                    metric_values[str(key)] = float(value)
+            if metric_values:
+                overlays[geoid] = metric_values
+        return overlays
+
+    def _load_overlays(self, path):
+        merged = {}
+        for overlay_path in self._iter_overlay_candidates(path):
+            try:
+                if overlay_path.suffix.lower() == '.json':
+                    overlay_values = self._load_json_overlay(overlay_path)
+                else:
+                    overlay_values = self._load_csv_overlay(overlay_path)
+            except (OSError, ValueError, json.JSONDecodeError) as e:
+                logger.warning('Unable to load overlay %s: %s', overlay_path.name, e)
+                continue
+
+            for geoid, metrics in overlay_values.items():
+                merged.setdefault(geoid, {}).update(metrics)
+
+        return merged
+
+    def _add_overlay_metric(self, dp, section_title, metric_key, metric_value):
+        raw_key = metric_key.lower().strip()
+        key = raw_key.replace(' ', '_')
+        if section_title == 'PROJECT DATA' and not key.startswith('project_'):
+            key = f'project_{key}'
+        label = raw_key.replace('_', ' ').title()
+        value_display = None
+        compound_value = None
+        compound_display = None
+        compound_suffix = '%'
+
+        for known_key, known_label, suffix in self.CRIME_METRIC_DEFS:
+            if key == known_key:
+                label = known_label
+                if suffix == '/100k':
+                    value_display = f'{metric_value:,.1f}{suffix}'
+                else:
+                    value_display = f'{metric_value:,.0f}'
+                break
+
+        if key.endswith('social_alignment_index'):
+            label = 'Social alignment index'
+            value_display = f'{metric_value:,.3f}'
+        elif value_display is None:
+            if float(metric_value).is_integer():
+                value_display = f'{metric_value:,.0f}'
+            else:
+                value_display = f'{metric_value:,.3f}'
+
+        if key.endswith('_count') and dp.rc.get('population', 0):
+            compound_value = metric_value / dp.rc['population'] * 100000.0
+            compound_display = f'{compound_value:,.1f}/100k'
+            compound_suffix = None
+
+        dp.add_custom_metric(
+            section_title=section_title,
+            key=key,
+            label=label,
+            value=metric_value,
+            value_display=value_display,
+            compound_value=compound_value,
+            compound_display=compound_display,
+            compound_suffix=compound_suffix,
+        )
+
+    def apply_overlays(self):
+        if not self.overlays:
+            return
+
+        dp_index = defaultdict(list)
+        for dp in self.demographicprofiles:
+            for key in self._normalize_geoid_keys(dp.geoid):
+                dp_index[key].append(dp)
+
+        for geoid, metrics in self.overlays.items():
+            matches = []
+            for key in self._normalize_geoid_keys(geoid):
+                matches.extend(dp_index.get(key, []))
+            if not matches:
+                continue
+
+            for dp in matches:
+                for metric_key, metric_value in metrics.items():
+                    section = 'CRIME' if 'crime' in metric_key.lower() else 'PROJECT DATA'
+                    self._add_overlay_metric(dp, section, metric_key, metric_value)
 
     def dbapi_qm_substr(self, columns_len):
         '''Get the DBAPI question mark substring'''
@@ -134,8 +355,9 @@ class Database:
         # Initialize ##########################################################
 
         self.data_dir = Path(path).expanduser().resolve()
-        self.year = '2020'
-        self.gh_year = '2023'
+        self.year = self.detect_latest_acs_year(self.data_dir)
+        self.gh_year = self.detect_latest_gazetteer_year(self.data_dir)
+        self.overlays = self._load_overlays(self.data_dir)
 
         self.st = StateTools()
 
@@ -330,59 +552,8 @@ class Database:
         # Specify what data we need ###########################################
 
         # Specify table_ids and line numbers that have the data we need.
-        # See data/ACS_5yr_Seq_Table_Number_Lookup.txt
-        if self.year == '2018':
-            self.line_numbers_dict = {
-                'B01003': ['1'],   # TOTAL POPULATION
-                'B19301': ['1'],   # PER CAPITA INCOME IN THE PAST 12 MONTHS (IN
-                                # 2018 INFLATION-ADJUSTED DOLLARS)
-                'B02001': ['2',    # RACE - White alone
-                        '3',    # RACE - Black or African American alone
-                        '5'],   # RACE - Asian alone
-                'B03002': ['3',    # HISPANIC OR LATINO ORIGIN BY RACE - Not
-                                # Hispanic or Latino - White alone
-                        '12'],  # ↑ - Hispanic or Latino
-                'B04004': ['51'],  # PEOPLE REPORTING SINGLE ANCESTRY - Italian
-                # EDUCATIONAL ATTAINMENT FOR THE POPULATION 25 YEARS AND OVER
-                'B15003': ['1',    # Total:
-                        '22',   # Bachelor's degree
-                        '23',   # Master's degree
-                        '24',   # Professional school degree
-                        '25'],  # Doctorate degree
-                # MEDIAN HOUSEHOLD INCOME IN THE PAST 12 MONTHS (IN 2018 INFLATION-ADJUSTED DOLLARS)
-                'B19013': ['1'],   # ↑
-                'B25035': ['1'],   # Median year structure built
-                'B25018': ['1'],   # Median number of rooms
-                'B25058': ['1'],   # Median contract rent (of renter-occupied
-                                # housing units)
-                'B25077': ['1'],   # Median value (of owner-occupied housing units)
-            }
-        elif self.year == '2020':
-            self.line_numbers_dict = {
-                'B01003': ['1'],   # TOTAL POPULATION
-                'B19301': ['1'],   # PER CAPITA INCOME IN THE PAST 12 MONTHS (IN
-                                # 2018 INFLATION-ADJUSTED DOLLARS)
-                'B02001': ['2',    # RACE - White alone
-                        '3',    # RACE - Black or African American alone
-                        '5'],   # RACE - Asian alone
-                'B03002': ['3',    # HISPANIC OR LATINO ORIGIN BY RACE - Not
-                                # Hispanic or Latino - White alone
-                        '12'],  # ↑ - Hispanic or Latino
-                'B04004': ['51'],  # PEOPLE REPORTING SINGLE ANCESTRY - Italian
-                # EDUCATIONAL ATTAINMENT FOR THE POPULATION 25 YEARS AND OVER
-                'B15003': ['1',    # Total:
-                        '22',   # Bachelor's degree
-                        '23',   # Master's degree
-                        '24',   # Professional school degree
-                        '25'],  # Doctorate degree
-                # MEDIAN HOUSEHOLD INCOME IN THE PAST 12 MONTHS (IN 2018 INFLATION-ADJUSTED DOLLARS)
-                'B19013': ['1'],   # ↑
-                'B25035': ['1'],   # Median year structure built
-                'B25018': ['1'],   # Median number of rooms
-                'B25058': ['1'],   # Median contract rent (of renter-occupied
-                                # housing units)
-                'B25077': ['1'],   # Median value (of owner-occupied housing units)
-            }
+        # These table line references have remained stable across recent ACS releases.
+        self.line_numbers_dict = self.LINE_NUMBERS_DICT
 
         # Get needed table metadata.
         self.table_metadata = []
@@ -630,6 +801,9 @@ class Database:
 
         # Debug output
         self.debug_output_list('demographicprofiles')
+
+        # Optional overlay enrichment (crime + personal project metrics).
+        self.apply_overlays()
 
         # Medians and standard deviations #####################################
 

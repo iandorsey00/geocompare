@@ -126,6 +126,33 @@ class DemographicProfile:
         for comp in self.rl.keys():
             self.rh[comp] = ' ' * self.ind[comp] + self.rl[comp]
 
+        # Display sections define how rows should be rendered in __str__/tocsv.
+        # row mode: nc=no compound, std=component+compound, co=compound only.
+        self.display_sections = [
+            ('GEOGRAPHY', [('nc', 'land_area')]),
+            ('POPULATION', [('nc', 'population'), ('co', 'population_density')]),
+            ('  Race', [
+                ('std', 'white_alone'),
+                ('std', 'white_alone_not_hispanic_or_latino'),
+                ('std', 'black_alone'),
+                ('std', 'asian_alone'),
+                ('std', 'other_race'),
+            ]),
+            ('  Hispanic or Latino (of any race)', [('std', 'hispanic_or_latino')]),
+            ('EDUCATION', [
+                ('std', 'population_25_years_and_older'),
+                ('std', 'bachelors_degree_or_higher'),
+                ('std', 'graduate_degree_or_higher'),
+            ]),
+            ('INCOME', [('nc', 'per_capita_income'), ('nc', 'median_household_income')]),
+            ('HOUSING', [
+                ('nc', 'median_year_structure_built'),
+                ('nc', 'median_rooms'),
+                ('nc', 'median_value'),
+                ('nc', 'median_rent'),
+            ]),
+        ]
+
         #######################################################################
         # Raw components - Data that comes directly from the Census data files
         self.rc = dict()
@@ -261,6 +288,61 @@ class DemographicProfile:
         # Inter-area margin (for display purposes)
         self.iam = ' '
 
+    def _format_component_value(self, key, value):
+        if key == 'land_area':
+            return f'{value:,.1f} sqmi'
+        if key in ['per_capita_income', 'median_household_income', 'median_value', 'median_rent']:
+            if key == 'median_household_income' and value == 250001:
+                return '$250,000+'
+            return '$' + f'{value:,}'
+        if key == 'median_year_structure_built':
+            return str(value)
+        return f'{value:,}'
+
+    def _format_compound_value(self, key, value, suffix):
+        if key == 'population_density':
+            return f'{value:,.1f}/sqmi'
+        if suffix:
+            return f'{value:,.1f}{suffix}'
+        return f'{value:,.1f}'
+
+    def add_custom_metric(
+        self,
+        section_title,
+        key,
+        label,
+        value,
+        indent=0,
+        value_display=None,
+        compound_value=None,
+        compound_display=None,
+        compound_suffix='%',
+    ):
+        self.rl[key] = label
+        self.ind[key] = indent
+        self.rh[key] = ' ' * indent + label
+        self.rc[key] = value
+        self.fc[key] = (
+            value_display if value_display is not None else self._format_component_value(key, value)
+        )
+
+        row_mode = 'nc'
+        if compound_value is not None:
+            self.c[key] = compound_value
+            self.fcd[key] = (
+                compound_display
+                if compound_display is not None
+                else self._format_compound_value(key, compound_value, compound_suffix)
+            )
+            row_mode = 'std'
+
+        for idx, (existing_title, rows) in enumerate(self.display_sections):
+            if existing_title == section_title:
+                rows.append((row_mode, key))
+                self.display_sections[idx] = (existing_title, rows)
+                return
+        self.display_sections.append((section_title, [(row_mode, key)]))
+
     def __repr__(self):
         '''Display a representation of the DemographicProfile class'''
         return "DemographicProfile(name='%s', counties=%s)" % (self.name,
@@ -323,31 +405,15 @@ class DemographicProfile:
             csv_dp_full_row_str(', '.join(self.counties_display))
 
         csv_divider()
-        csv_dp_full_row_str('GEOGRAPHY')
-        csv_dp_row_str(self.rh['land_area'], '', self.fc['land_area'])
-        csv_dp_full_row_str('POPULATION')
-        csv_dp_row_nc('population')
-        csv_dp_row_str(self.rh['population_density'], '', self.fcd['population_density'])
-        csv_dp_full_row_str('  Race')
-        csv_dp_row_std('white_alone')
-        csv_dp_row_std('white_alone_not_hispanic_or_latino')
-        csv_dp_row_std('black_alone')
-        csv_dp_row_std('asian_alone')
-        csv_dp_row_std('other_race')
-        csv_dp_full_row_str('  Hispanic or Latino (of any race)')
-        csv_dp_row_std('hispanic_or_latino')
-        csv_dp_full_row_str('EDUCATION')
-        csv_dp_row_std('population_25_years_and_older')
-        csv_dp_row_std('bachelors_degree_or_higher')
-        csv_dp_row_std('graduate_degree_or_higher')
-        csv_dp_full_row_str('INCOME')
-        csv_dp_row_nc('per_capita_income')
-        csv_dp_row_nc('median_household_income')
-        csv_dp_full_row_str('HOUSING')
-        csv_dp_row_nc('median_year_structure_built')
-        csv_dp_row_nc('median_rooms')
-        csv_dp_row_nc('median_value')
-        csv_dp_row_nc('median_rent')
+        for section_title, rows in self.display_sections:
+            csv_dp_full_row_str(section_title)
+            for row_mode, key in rows:
+                if row_mode == 'std':
+                    csv_dp_row_std(key)
+                elif row_mode == 'co':
+                    csv_dp_row_str(self.rh[key], '', self.fcd[key])
+                else:
+                    csv_dp_row_nc(key)
         csv_divider()
 
     def __str__(self):
@@ -361,31 +427,15 @@ class DemographicProfile:
             out_str += self.dp_full_row_str(', '.join(self.counties_display))
 
         out_str += self.divider()
-        out_str += self.dp_full_row_str('GEOGRAPHY')
-        out_str += self.dp_row_str(self.rh['land_area'], '', self.fc['land_area'])
-        out_str += self.dp_full_row_str('POPULATION')
-        out_str += self.dp_row_nc('population')
-        out_str += self.dp_row_str(self.rh['population_density'], '', self.fcd['population_density'])
-        out_str += self.dp_full_row_str('  Race')
-        out_str += self.dp_row_std('white_alone')
-        out_str += self.dp_row_std('white_alone_not_hispanic_or_latino')
-        out_str += self.dp_row_std('black_alone')
-        out_str += self.dp_row_std('asian_alone')
-        out_str += self.dp_row_std('other_race')
-        out_str += self.dp_full_row_str('  Hispanic or Latino (of any race)')
-        out_str += self.dp_row_std('hispanic_or_latino')
-        out_str += self.dp_full_row_str('EDUCATION')
-        out_str += self.dp_row_std('population_25_years_and_older')
-        out_str += self.dp_row_std('bachelors_degree_or_higher')
-        out_str += self.dp_row_std('graduate_degree_or_higher')
-        out_str += self.dp_full_row_str('INCOME')
-        out_str += self.dp_row_nc('per_capita_income')
-        out_str += self.dp_row_nc('median_household_income')
-        out_str += self.dp_full_row_str('HOUSING')
-        out_str += self.dp_row_nc('median_year_structure_built')
-        out_str += self.dp_row_nc('median_rooms')
-        out_str += self.dp_row_nc('median_value')
-        out_str += self.dp_row_nc('median_rent')
+        for section_title, rows in self.display_sections:
+            out_str += self.dp_full_row_str(section_title)
+            for row_mode, key in rows:
+                if row_mode == 'std':
+                    out_str += self.dp_row_std(key)
+                elif row_mode == 'co':
+                    out_str += self.dp_row_str(self.rh[key], '', self.fcd[key])
+                else:
+                    out_str += self.dp_row_nc(key)
         out_str += self.divider()
 
         return out_str
