@@ -12,7 +12,6 @@ from rapidfuzz import fuzz
 
 try:
     from geodata.database.Database import Database
-    from geodata.repository.pickle_repository import PickleRepository
     from geodata.repository.sqlite_repository import SQLiteRepository
     from geodata.identity.place_identity import PlaceIdentityIndex
     from geodata.tools.geodata_typecast import gdt
@@ -22,7 +21,6 @@ try:
     from geodata.tools.SummaryLevelTools import SummaryLevelTools
 except ImportError:  # pragma: no cover - script execution fallback
     from database.Database import Database
-    from repository.pickle_repository import PickleRepository
     from repository.sqlite_repository import SQLiteRepository
     from identity.place_identity import PlaceIdentityIndex
     from tools.geodata_typecast import gdt
@@ -39,16 +37,10 @@ class Engine:
         self.slt = SummaryLevelTools()
 
         self.PROJECT_ROOT = Path(__file__).resolve().parents[1]
-        self.pickle_path = self.PROJECT_ROOT / 'bin' / 'default.geodata'
         self.sqlite_path = self.PROJECT_ROOT / 'bin' / 'default.sqlite'
 
-        self.pickle_repository = PickleRepository(self.pickle_path)
         self.sqlite_repository = SQLiteRepository(self.sqlite_path)
         self.primary_repository = self.sqlite_repository
-        self.read_repositories = [
-            self.sqlite_repository,
-            self.pickle_repository,
-        ]
 
         self.d = None
         self._dp_by_name = {}
@@ -59,28 +51,15 @@ class Engine:
         '''Generate and save data products.'''
         products = Database(data_path).get_products()
 
-        # Write to primary repository (SQLite) and legacy compatibility file.
+        # Write data products to SQLite.
         self.primary_repository.save_data_products(products)
-        self.pickle_repository.save_data_products(products)
 
         self._set_data_products(products)
         print('Data product write completed.')
 
     def load_data_products(self):
         '''Load data products.'''
-        load_errors = []
-
-        for repo in self.read_repositories:
-            try:
-                return repo.load_data_products()
-            except RuntimeError as e:
-                load_errors.append(f'{repo.name} -> {e}')
-
-        error_details = '\n'.join(load_errors)
-        raise RuntimeError(
-            'Unable to load data products from configured repositories.\n'
-            f'{error_details}'
-        )
+        return self.primary_repository.load_data_products()
 
     def _set_data_products(self, data_products):
         '''Set in-memory data products and query indexes.'''
