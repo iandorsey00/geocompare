@@ -7,13 +7,13 @@ import csv
 import sys
 import textwrap
 
-from geocompare.tools.CountyTools import CountyTools
+from geocompare.tools.county_lookup import CountyLookup
 from geocompare.tools.numeric import parse_float, parse_number
 
 
 class DemographicProfile:
     '''Used to display data for a geography.'''
-    _ct = CountyTools()
+    _ct = CountyLookup()
 
     def __init__(self, db_row):
 

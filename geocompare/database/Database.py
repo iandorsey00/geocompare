@@ -15,7 +15,7 @@ import pandas as pd
 from geocompare.models.demographic_profile import DemographicProfile
 from geocompare.models.geovector import GeoVector
 from geocompare.tools.numeric import parse_number
-from geocompare.tools.StateTools import StateTools
+from geocompare.tools.state_lookup import StateLookup
 
 logger = logging.getLogger(__name__)
 
@@ -775,7 +775,7 @@ class Database:
         )
         self.overlays = self._load_overlays(self.data_dir)
 
-        self.st = StateTools()
+        self.st = StateLookup()
 
         # Connect to SQLite3
         self.conn = sqlite3.connect(':memory:')

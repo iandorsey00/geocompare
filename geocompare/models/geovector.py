@@ -6,13 +6,13 @@ for demographic data.
 '''
 
 
-from geocompare.tools.CountyTools import CountyTools
+from geocompare.tools.county_lookup import CountyLookup
 from geocompare.tools.numeric import parse_float, parse_int, safe_divide
 
 
 class GeoVector:
     '''A vector used to compare places with others.'''
-    _ct = CountyTools()
+    _ct = CountyLookup()
 
     def __init__(
         self,

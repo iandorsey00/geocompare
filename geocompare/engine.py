@@ -14,20 +14,20 @@ from rapidfuzz import fuzz
 from geocompare.database.Database import Database
 from geocompare.identity.place_identity import PlaceIdentityIndex
 from geocompare.repository.sqlite_repository import SQLiteRepository
-from geocompare.tools.CountyTools import CountyTools
-from geocompare.tools.KeyTools import KeyTools
+from geocompare.tools.county_key_index import CountyKeyIndex
+from geocompare.tools.county_lookup import CountyLookup
 from geocompare.tools.numeric import parse_number
-from geocompare.tools.StateTools import StateTools
-from geocompare.tools.SummaryLevelTools import SummaryLevelTools
+from geocompare.tools.state_lookup import StateLookup
+from geocompare.tools.summary_level_parser import SummaryLevelParser
 
 
 class Engine:
     def __init__(self):
         self.logger = logging.getLogger(__name__)
-        self.ct = CountyTools()
-        self.st = StateTools()
-        self.kt = KeyTools()
-        self.slt = SummaryLevelTools()
+        self.ct = CountyLookup()
+        self.st = StateLookup()
+        self.kt = CountyKeyIndex()
+        self.slt = SummaryLevelParser()
 
         self.PROJECT_ROOT = Path(__file__).resolve().parents[1]
         self.sqlite_path = self.PROJECT_ROOT / "bin" / "default.sqlite"
