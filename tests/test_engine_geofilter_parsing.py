@@ -6,7 +6,12 @@ from geocompare.tools.summary_level_parser import SummaryLevelParser
 
 def _engine_stub():
     engine = Engine.__new__(Engine)
-    engine.get_data_types = lambda comp, data_type, fetch_one: ("rc", "fc")
+    engine.resolve_data_identifier = lambda comp, fetch_one: {
+        "store": "rc",
+        "key": comp,
+        "display_store": "fc",
+        "label": comp,
+    }
     engine.slt = SummaryLevelParser()
     return engine
 

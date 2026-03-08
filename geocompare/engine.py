@@ -1,4 +1,5 @@
 import csv
+import difflib
 import heapq
 import logging
 import operator
@@ -150,12 +151,10 @@ class Engine:
 
         conditions = []
         for criteria in parse_geofilter(geofilter):
-            data_type = criteria["data_type"] or False
-            comp = criteria["comp"]
-            sort_by, _ = self.get_data_types(comp, data_type, fetch_one)
+            resolved = self.resolve_data_identifier(criteria["comp"], fetch_one)
             conditions.append(
                 {
-                    "column": f"{sort_by}_{comp}",
+                    "column": f"{resolved['store']}_{resolved['key']}",
                     "operator": criteria["operator"],
                     "value": parse_number(criteria["value"]),
                 }
@@ -177,32 +176,61 @@ class Engine:
             "geofilter_conditions": self._build_sql_geofilter_conditions(geofilter, fetch_one),
         }
 
-    def get_data_types(self, comp, data_type, fetch_one):
-        """
-        Determine whether we want components (values that come straight from
-        Census data files) or compounds (values that can only be obtained by
-        math operations involving multiple components).
+    def list_data_identifiers(self, fetch_one):
+        identifiers = set(fetch_one.rc.keys())
 
-        By default, display compounds if there is one for the comp.
-        Otherwise, display a component.
-        """
-        if not data_type:
-            if comp in fetch_one.c.keys():
-                sort_by = "c"
-                print_ = "fcd"
+        for key in fetch_one.c.keys():
+            if key in fetch_one.rc:
+                identifiers.add(f"{key}_pct")
             else:
-                sort_by = "rc"
-                print_ = "fc"
-        # User input 'c', so display a component
-        elif data_type == "c":
-            sort_by = "rc"
-            print_ = "fc"
-        # User input 'cc' (or anything else...), so display a compound
-        else:
-            sort_by = "c"
-            print_ = "fcd"
+                identifiers.add(key)
 
-        return (sort_by, print_)
+        return sorted(identifiers)
+
+    def _format_identifier_label(self, identifier):
+        return identifier.replace("_", " ")
+
+    def resolve_data_identifier(self, data_identifier, fetch_one):
+        requested = str(data_identifier or "").strip().lower()
+        if not requested:
+            raise ValueError("Missing data identifier.")
+
+        if requested in fetch_one.rc:
+            return {
+                "requested": requested,
+                "key": requested,
+                "store": "rc",
+                "display_store": "fc",
+                "label": fetch_one.rh.get(requested, self._format_identifier_label(requested)),
+            }
+
+        if requested in fetch_one.c and requested not in fetch_one.rc:
+            return {
+                "requested": requested,
+                "key": requested,
+                "store": "c",
+                "display_store": "fcd",
+                "label": fetch_one.rh.get(requested, self._format_identifier_label(requested)),
+            }
+
+        if requested.endswith("_pct"):
+            base_key = requested[:-4]
+            if base_key in fetch_one.c:
+                base_label = fetch_one.rh.get(base_key, self._format_identifier_label(base_key))
+                return {
+                    "requested": requested,
+                    "key": base_key,
+                    "store": "c",
+                    "display_store": "fcd",
+                    "label": f"{base_label} (%)",
+                }
+
+        choices = self.list_data_identifiers(fetch_one)
+        suggestions = difflib.get_close_matches(requested, choices, n=5, cutoff=0.6)
+        suggestion_suffix = ""
+        if suggestions:
+            suggestion_suffix = " Did you mean: " + ", ".join(suggestions) + "?"
+        raise ValueError(f"Unknown data identifier: {data_identifier}.{suggestion_suffix}")
 
     def context_filter(self, input_instances, context, geofilter, gv=False):
         """Filters instances and leaves those that match the context."""
@@ -240,9 +268,7 @@ class Engine:
             }
 
             for filter_criterium in parse_geofilter(geofilter):
-                data_type = filter_criterium["data_type"] or False
-                comp = filter_criterium["comp"]
-                filter_by, print_ = self.get_data_types(comp, data_type, fetch_one)
+                resolved = self.resolve_data_identifier(filter_criterium["comp"], fetch_one)
                 operator_key = filter_criterium["operator"]
 
                 value = parse_number(filter_criterium["value"])
@@ -253,7 +279,13 @@ class Engine:
                     raise ValueError("filter: Invalid operator")
 
                 instances = list(
-                    filter(lambda x: compare(getattr(x, filter_by)[comp], value), instances)
+                    filter(
+                        lambda x: compare(
+                            getattr(x, resolved["store"])[resolved["key"]],
+                            value,
+                        ),
+                        instances,
+                    )
                 )
 
         return instances
@@ -301,19 +333,16 @@ class Engine:
 
         return [self._lookup_dp(display_label)]
 
-    def extreme_values(
-        self, comp, data_type="c", context="", geofilter="", n=10, lowest=False, **kwargs
-    ):
+    def extreme_values(self, data_identifier, context="", geofilter="", n=10, lowest=False, **kwargs):
         """Get highest and lowest values."""
         d = self.get_data_products()
-
-        comp = comp
-        data_type = data_type
 
         dpi_instances = d["demographicprofiles"]
         fetch_one = dpi_instances[0]
 
-        sort_by, print_ = self.get_data_types(comp, data_type, fetch_one)
+        resolved = self.resolve_data_identifier(data_identifier, fetch_one)
+        key = resolved["key"]
+        sort_by = resolved["store"]
         if n <= 0:
             n = len(dpi_instances)
 
@@ -321,12 +350,12 @@ class Engine:
             sql_params = self._build_sql_query_params(context, geofilter, fetch_one)
 
             exclude_values = []
-            if comp == "median_year_structure_built" and sort_by == "rc":
+            if key == "median_year_structure_built" and sort_by == "rc":
                 exclude_values = [0, 18]
 
             try:
                 names = self.primary_repository.query_extreme_profile_names(
-                    comp_column=f"{sort_by}_{comp}",
+                    comp_column=f"{sort_by}_{key}",
                     universe_sl=sql_params["universe_sl"],
                     group_sl=sql_params["group_sl"],
                     group=sql_params["group"],
@@ -342,7 +371,7 @@ class Engine:
 
         # Remove numpy.nans because they interfere with sorted()
         dpi_instances = list(
-            filter(lambda x: not numpy.isnan(getattr(x, sort_by)[comp]), dpi_instances)
+            filter(lambda x: not numpy.isnan(getattr(x, sort_by)[key]), dpi_instances)
         )
 
         # Filter instances
@@ -350,7 +379,7 @@ class Engine:
 
         # For the median_year_structure_built component, remove values of zero and
         # 18...
-        if comp == "median_year_structure_built":
+        if key == "median_year_structure_built":
             dpi_instances = list(
                 filter(lambda x: not x.rc["median_year_structure_built"] == 0, dpi_instances)
             )
@@ -360,13 +389,17 @@ class Engine:
 
         # Sort our DemographicProfile instances by component or compound specified.
         if lowest:
-            return heapq.nsmallest(n, dpi_instances, key=lambda x: getattr(x, sort_by)[comp])
-        return heapq.nlargest(n, dpi_instances, key=lambda x: getattr(x, sort_by)[comp])
+            return heapq.nsmallest(n, dpi_instances, key=lambda x: getattr(x, sort_by)[key])
+        return heapq.nlargest(n, dpi_instances, key=lambda x: getattr(x, sort_by)[key])
 
-    def lowest_values(self, comp, data_type="c", context="", geofilter="", n=10, **kwargs):
+    def lowest_values(self, data_identifier, context="", geofilter="", n=10, **kwargs):
         """Wrapper function for lowest values."""
         return self.extreme_values(
-            comp, data_type=data_type, context=context, geofilter=geofilter, n=n, lowest=True
+            data_identifier,
+            context=context,
+            geofilter=geofilter,
+            n=n,
+            lowest=True,
         )
 
     def display_label_search(self, query, n=10, **kwargs):
@@ -390,12 +423,12 @@ class Engine:
         )
 
     def rows(self, comps, context="", geofilter="", n=0, **kwargs):
-        """Output data to a CSV file"""
+        """Output data identifiers to CSV."""
         d = self.get_data_products()
         dpi_instances = d["demographicprofiles"]
         fetch_one = dpi_instances[0]
 
-        # Categories: Groups of >= 1 comp(s)
+        # Categories: Groups of >= 1 data identifiers.
         categories = {
             ":geography": ["land_area"],
             ":population": ["population", "population_density"],
@@ -424,14 +457,14 @@ class Engine:
         comps = comps.split(" ")
         comp_list = list()
 
-        # Replace categories with comps and validate comps
+        # Replace categories with identifiers and validate identifiers.
         for comp in comps:
             if comp in categories.keys():
                 comp_list += categories[comp]
-            elif comp in fetch_one.rh:
+            elif comp:
                 comp_list += [comp]
-            else:
-                raise ValueError(comp + ": Invalid comp")
+
+        resolved_identifiers = [self.resolve_data_identifier(comp, fetch_one) for comp in comp_list]
 
         # Filter instances
         if self._repo_supports("query_profile_names"):
@@ -464,12 +497,8 @@ class Engine:
         # Header row
         this_row = ["Geography", "County"]
 
-        for comp in comp_list:
-            if comp in fetch_one.rc.keys() and comp in fetch_one.c.keys():
-                this_row += [fetch_one.rh[comp] + " (c)"]
-                this_row += [fetch_one.rh[comp] + " (cc)"]
-            else:
-                this_row += [fetch_one.rh[comp]]
+        for identifier in resolved_identifiers:
+            this_row += [identifier["label"]]
 
         csvwriter.writerow(this_row)
 
@@ -477,14 +506,10 @@ class Engine:
         for dpi_instance in dpi_instances:
             this_row = [dpi_instance.name, ", ".join(dpi_instance.counties_display)]
 
-            for comp in comp_list:
-                if comp in dpi_instance.rc.keys() and comp in dpi_instance.c.keys():
-                    this_row += [dpi_instance.fc[comp]]
-                    this_row += [dpi_instance.fcd[comp]]
-                elif comp in dpi_instance.rc:
-                    this_row += [dpi_instance.fc[comp]]
-                else:
-                    this_row += [dpi_instance.fcd[comp]]
+            for identifier in resolved_identifiers:
+                key = identifier["key"]
+                display_store = identifier["display_store"]
+                this_row += [getattr(dpi_instance, display_store)[key]]
 
             csvwriter.writerow(this_row)
 

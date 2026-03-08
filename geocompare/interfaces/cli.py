@@ -94,11 +94,15 @@ class GeoCompareCLI:
         )
         similar_app_parser.set_defaults(func=self.compare_geovectors_app)
 
-        top_parser = query_subparsers.add_parser("top", help="show highest values by component")
+        top_parser = query_subparsers.add_parser(
+            "top", help="show highest values by data identifier"
+        )
         self._add_rank_args(top_parser)
         top_parser.set_defaults(func=self.extreme_values)
 
-        bottom_parser = query_subparsers.add_parser("bottom", help="show lowest values by component")
+        bottom_parser = query_subparsers.add_parser(
+            "bottom", help="show lowest values by data identifier"
+        )
         self._add_rank_args(bottom_parser)
         bottom_parser.set_defaults(func=self.lowest_values)
 
@@ -148,7 +152,7 @@ class GeoCompareCLI:
         export_rows_parser = export_subparsers.add_parser(
             "rows", help="export multiple rows to CSV"
         )
-        export_rows_parser.add_argument("comps", help="components or compounds to output")
+        export_rows_parser.add_argument("comps", help="data identifiers to output")
         self._add_filter_arg(export_rows_parser)
         self._add_context_args(export_rows_parser)
         export_rows_parser.add_argument(
@@ -176,10 +180,7 @@ class GeoCompareCLI:
         args.func(args)
 
     def _add_rank_args(self, parser):
-        parser.add_argument("comp", help="the component you want to rank")
-        parser.add_argument(
-            "-d", "--data_type", choices=["c", "cc"], help="c: component; cc: compound"
-        )
+        parser.add_argument("data_identifier", help="the data identifier you want to rank")
         self._add_filter_arg(parser)
         self._add_context_args(parser)
         parser.add_argument("-n", type=int, default=15, help="number of rows to display")
@@ -368,17 +369,23 @@ class GeoCompareCLI:
 
     def extreme_values(self, args, lowest=False):
         self._normalize_scope_args(args)
-        evs = self.engine.extreme_values(**vars(args), lowest=lowest)
+        try:
+            evs = self.engine.extreme_values(**vars(args), lowest=lowest)
+        except ValueError as exc:
+            self._eprint(str(exc))
+            return
         if len(evs) == 0:
             self._eprint("Sorry, no geographies match your criteria.")
             return
 
         fetch_one = evs[0]
-        _, print_ = self.engine.get_data_types(args.comp, args.data_type, fetch_one)
+        resolved = self.engine.resolve_data_identifier(args.data_identifier, fetch_one)
+        key = resolved["key"]
+        print_ = resolved["display_store"]
         iam = " "
 
         def divider(dpi):
-            return "-" * (68 if args.comp == "population" else 89)
+            return "-" * (68 if key == "population" else 89)
 
         def ev_print_headers(comp, universe_sl, group_sl, group):
             if universe_sl == "040":
@@ -400,8 +407,8 @@ class GeoCompareCLI:
                 if group_sl == "040":
                     group_name = self.st.get_name(group)
                 elif group_sl == "050":
-                    key = "us:" + group + "/county"
-                    group_name = self.kt.key_to_county_name[key]
+                    county_key = "us:" + group + "/county"
+                    group_name = self.kt.key_to_county_name[county_key]
                 elif group_sl == "860":
                     group_name = group
                 else:
@@ -417,8 +424,8 @@ class GeoCompareCLI:
                     iam + universe.ljust(45)[:45] + iam + getattr(dpi, "rh")["population"].rjust(20)
                 )
 
-            if comp != "population":
-                out_str += iam + getattr(dpi, "rh")[comp].rjust(20)[:20]
+            if key != "population":
+                out_str += iam + resolved["label"].rjust(20)[:20]
 
             return out_str
 
@@ -429,14 +436,14 @@ class GeoCompareCLI:
                 + iam
                 + getattr(dpi, "fc")["population"].rjust(20)
             )
-            if args.comp != "population":
-                out_str += iam + getattr(dpi, print_)[args.comp].rjust(20)[:20]
+            if key != "population":
+                out_str += iam + getattr(dpi, print_)[key].rjust(20)[:20]
             return out_str
 
         universe_sl, group_sl, group = self.slt.unpack_context(args.context)
-        dpi = self.engine.get_data_products()["demographicprofiles"][0]
+        dpi = evs[0]
         print(divider(dpi))
-        print(ev_print_headers(args.comp, universe_sl, group_sl, group))
+        print(ev_print_headers(key, universe_sl, group_sl, group))
         print(divider(dpi))
         for ev in evs[: args.n]:
             print(ev_print_row(ev))

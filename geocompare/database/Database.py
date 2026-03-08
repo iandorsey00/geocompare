@@ -58,9 +58,9 @@ class Database:
     ]
 
     VOTER_PERCENT_METRIC_DEFS = [
-        ('percent_democratic', 'Percent Democratic'),
-        ('percent_republican', 'Percent Republican'),
-        ('percent_other', 'Percent Other'),
+        ('democratic_voters_pct', 'Democratic voters (%)'),
+        ('republican_voters_pct', 'Republican voters (%)'),
+        ('other_voters_pct', 'Other voters (%)'),
     ]
 
     ###########################################################################
@@ -384,7 +384,7 @@ class Database:
 
         derived = {}
         for party in ('democratic', 'republican', 'other'):
-            percent_key = f'percent_{party}'
+            percent_key = f'{party}_voters_pct'
             if percent_key in metrics:
                 continue
 
@@ -405,7 +405,7 @@ class Database:
         lowered = metric_key.lower()
         if 'crime' in lowered:
             return 'CRIME'
-        if 'voter' in lowered or lowered.startswith('percent_'):
+        if 'voter' in lowered or lowered.endswith('_pct'):
             return 'CIVICS'
         return 'PROJECT DATA'
 
@@ -419,13 +419,14 @@ class Database:
                 dp_index[key].append(dp)
 
         for geoid, metrics in self.overlays.items():
-            matches = []
+            matches = {}
             for key in self._normalize_geoid_keys(geoid):
-                matches.extend(dp_index.get(key, []))
+                for dp in dp_index.get(key, []):
+                    matches[dp.geoid] = dp
             if not matches:
                 continue
 
-            for dp in matches:
+            for dp in matches.values():
                 effective_metrics = dict(metrics)
                 effective_metrics.update(
                     self._derive_crime_rate_metrics(

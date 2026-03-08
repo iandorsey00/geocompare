@@ -10,11 +10,9 @@ _SYMBOL_TO_OPERATOR = {
     "<": "lt",
 }
 
-_SYMBOL_FILTER_RE = re.compile(
-    r"^\s*([A-Za-z_][A-Za-z0-9_]*)\s*(>=|<=|=|>|<)\s*([^:]+?)\s*(?::\s*(c|cc)\s*)?$"
-)
+_SYMBOL_FILTER_RE = re.compile(r"^\s*([A-Za-z_][A-Za-z0-9_]*)\s*(>=|<=|=|>|<)\s*(.+?)\s*$")
 _WORD_FILTER_RE = re.compile(
-    r"^\s*([A-Za-z_][A-Za-z0-9_]*)\s+(gt|gteq|eq|lteq|lt)\s+(.+?)(?:\s*:\s*(c|cc)\s*)?\s*$"
+    r"^\s*([A-Za-z_][A-Za-z0-9_]*)\s+(gt|gteq|eq|lteq|lt)\s+(.+?)\s*$"
 )
 
 
@@ -38,27 +36,37 @@ def parse_geofilter(geofilter: str) -> List[Dict[str, Optional[str]]]:
 def _parse_single_filter(raw: str) -> Dict[str, Optional[str]]:
     symbol_match = _SYMBOL_FILTER_RE.match(raw)
     if symbol_match:
-        comp, operator_symbol, value, data_type = symbol_match.groups()
+        comp, operator_symbol, value = symbol_match.groups()
+        normalized_value = value.strip()
+        if re.search(r":\s*(c|cc)\s*$", normalized_value):
+            raise ValueError(
+                "filter: Legacy :c/:cc suffixes are no longer supported. "
+                "Use data identifiers directly (for example: bachelors_degree_or_higher_pct>=40)."
+            )
         return {
             "comp": comp,
             "operator": _SYMBOL_TO_OPERATOR[operator_symbol],
-            "value": value.strip(),
-            "data_type": data_type,
+            "value": normalized_value,
         }
 
     word_match = _WORD_FILTER_RE.match(raw)
     if word_match:
-        comp, operator_key, value, data_type = word_match.groups()
+        comp, operator_key, value = word_match.groups()
+        normalized_value = value.strip()
+        if re.search(r":\s*(c|cc)\s*$", normalized_value):
+            raise ValueError(
+                "filter: Legacy :c/:cc suffixes are no longer supported. "
+                "Use data identifiers directly (for example: bachelors_degree_or_higher_pct>=40)."
+            )
         return {
             "comp": comp,
             "operator": operator_key,
-            "value": value.strip(),
-            "data_type": data_type,
+            "value": normalized_value,
         }
 
     raise ValueError(
-        "filter: Invalid criteria. Use 'comp>=value' "
-        "(operators: >,>=,=,<=,< with optional :c or :cc suffix)."
+        "filter: Invalid criteria. Use 'data_identifier>=value' "
+        "(operators: >,>=,=,<=,<)."
     )
 
 

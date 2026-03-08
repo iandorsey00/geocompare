@@ -5,16 +5,12 @@ from geocompare.tools.query_syntax import build_context, parse_geofilter
 
 def test_parse_geofilter_supports_word_operator_syntax():
     filters = parse_geofilter("population gteq 100000")
-    assert filters == [
-        {"comp": "population", "operator": "gteq", "value": "100000", "data_type": None}
-    ]
+    assert filters == [{"comp": "population", "operator": "gteq", "value": "100000"}]
 
 
 def test_parse_geofilter_supports_symbol_syntax():
     filters = parse_geofilter("population>=100000")
-    assert filters == [
-        {"comp": "population", "operator": "gteq", "value": "100000", "data_type": None}
-    ]
+    assert filters == [{"comp": "population", "operator": "gteq", "value": "100000"}]
 
 
 def test_parse_geofilter_supports_multiple_criteria():
@@ -27,6 +23,11 @@ def test_parse_geofilter_supports_multiple_criteria():
 def test_parse_geofilter_rejects_invalid_criteria():
     with pytest.raises(ValueError):
         parse_geofilter("population@100000")
+
+
+def test_parse_geofilter_rejects_legacy_data_type_suffix():
+    with pytest.raises(ValueError):
+        parse_geofilter("population>=100000:c")
 
 
 def test_build_context_supports_explicit_scope_args():

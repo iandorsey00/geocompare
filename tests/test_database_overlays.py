@@ -95,7 +95,7 @@ def test_apply_overlays_derives_crime_rates_from_counts():
     assert round(added["total_crime_rate"]["value"], 1) == 10000.0
 
 
-def test_apply_overlays_adds_voter_metrics_and_percentages():
+def test_apply_overlays_adds_voter_metrics_and_pct_values():
     dp = FakeDP("16000US0601000", 2000)
 
     db = Database.__new__(Database)
@@ -113,16 +113,39 @@ def test_apply_overlays_adds_voter_metrics_and_percentages():
 
     added = {row["key"]: row for row in dp.added}
     assert "registered_voters" in added
-    assert "percent_democratic" in added
-    assert "percent_republican" in added
-    assert "percent_other" in added
+    assert "democratic_voters_pct" in added
+    assert "republican_voters_pct" in added
+    assert "other_voters_pct" in added
 
     assert added["registered_voters"]["section_title"] == "CIVICS"
     assert added["registered_voters"]["value_display"] == "1,000"
-    assert round(added["percent_democratic"]["value"], 1) == 52.0
-    assert round(added["percent_republican"]["value"], 1) == 38.0
-    assert round(added["percent_other"]["value"], 1) == 10.0
-    assert added["percent_democratic"]["value_display"].endswith("%")
+    assert round(added["democratic_voters_pct"]["value"], 1) == 52.0
+    assert round(added["republican_voters_pct"]["value"], 1) == 38.0
+    assert round(added["other_voters_pct"]["value"], 1) == 10.0
+    assert added["democratic_voters_pct"]["value_display"].endswith("%")
+
+
+def test_apply_overlays_deduplicates_full_geoid_matches():
+    dp = FakeDP("16000US0665042", 1000)
+
+    db = Database.__new__(Database)
+    db.demographicprofiles = [dp]
+    db.overlays = {
+        "1600000US0665042": {
+            "registered_voters": 100.0,
+            "democratic_voters": 55.0,
+            "republican_voters": 30.0,
+            "other_voters": 15.0,
+        }
+    }
+
+    db.apply_overlays()
+
+    registered_rows = [row for row in dp.added if row["key"] == "registered_voters"]
+    percent_dem_rows = [row for row in dp.added if row["key"] == "democratic_voters_pct"]
+
+    assert len(registered_rows) == 1
+    assert len(percent_dem_rows) == 1
 
 
 def test_detect_acs_layout(tmp_path):
