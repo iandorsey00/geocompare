@@ -145,6 +145,8 @@ bin/
 scripts/*
 !scripts/
 !scripts/fetch_latest_acs.py
+!scripts/fetch_overlays.py
+!scripts/build_nibrs_crime_overlay.py
 
 # Local overlay inputs (crime/project data)
 /overlays/*

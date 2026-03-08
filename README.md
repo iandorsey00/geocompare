@@ -114,6 +114,44 @@ Recommended metadata file (`overlay_manifest.json`) in your overlay repo:
 `overlay_manifest.json` is optional today, but recommended for stable naming,
 labels, and section placement across overlay builds.
 
+## Base-Only Rebuild (No Custom Overlay)
+
+Use this path to return to a clean, shareable base geocompare state:
+
+1. Fetch ACS + Gazetteer files:
+
+```bash
+python3 scripts/fetch_latest_acs.py --out-dir /path/to/data --archive-existing
+```
+
+2. (Optional) refresh canonical built-in overlays:
+
+```bash
+python3 scripts/fetch_overlays.py \
+  --out-dir /path/to/data \
+  --crime-source /path/or/url/to/crime.csv \
+  --voter-source /path/or/url/to/voter.csv
+```
+
+3. Ensure no private overlay file is present:
+
+- Remove or relocate `/path/to/data/overlays/project_data.csv`
+- Remove or relocate `/path/to/data/overlays/overlay_manifest.json`
+
+4. Build:
+
+```bash
+python3 -m geocompare.interfaces.cli build /path/to/data
+```
+
+## Repository Scripts
+
+Tracked operational scripts:
+
+- `scripts/fetch_latest_acs.py`: download/update ACS + Gazetteer inputs.
+- `scripts/fetch_overlays.py`: normalize built-in crime/voter overlays.
+- `scripts/build_nibrs_crime_overlay.py`: build base crime overlay from NIBRS inputs.
+
 Query workflows:
 
 ```bash
