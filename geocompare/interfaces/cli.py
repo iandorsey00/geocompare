@@ -366,12 +366,16 @@ class GeoCompareCLI:
             for row_type, row_mode_or_section, key in rows:
                 if row_type == "metric":
                     if row_mode_or_section == "std":
-                        component_lengths.append(len(dp.fc[key]))
-                        compound_lengths.append(len(dp.fcd[key]))
+                        if key in dp.fc:
+                            component_lengths.append(len(dp.fc[key]))
+                        if key in dp.fcd:
+                            compound_lengths.append(len(dp.fcd[key]))
                     elif row_mode_or_section == "co":
-                        compound_lengths.append(len(dp.fcd[key]))
+                        if key in dp.fcd:
+                            compound_lengths.append(len(dp.fcd[key]))
                     else:
-                        compound_lengths.append(len(dp.fc[key]))
+                        if key in dp.fc:
+                            compound_lengths.append(len(dp.fc[key]))
             per_geo_component_widths.append(max([15] + component_lengths))
             per_geo_compound_widths.append(max([15] + compound_lengths))
 
