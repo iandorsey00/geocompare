@@ -79,6 +79,20 @@ class GeoCompareCLI:
         )
         profile_parser.set_defaults(func=self.get_dp)
 
+        profile_compare_parser = query_subparsers.add_parser(
+            "profile-compare", help="compare multiple demographic profiles line by line"
+        )
+        profile_compare_parser.add_argument(
+            "display_labels", nargs="+", help="two or more exact place names"
+        )
+        profile_compare_parser.add_argument(
+            "--profile-view",
+            choices=["compact", "full"],
+            default="full",
+            help="profile display density",
+        )
+        profile_compare_parser.set_defaults(func=self.profile_compare)
+
         similar_parser = query_subparsers.add_parser("similar", help="show nearest geovectors")
         similar_parser.add_argument("display_label", help="the exact place name")
         self._add_context_args(similar_parser)
@@ -281,6 +295,148 @@ class GeoCompareCLI:
             self._eprint("Sorry, there is no geography with that name.")
             return
         print(dp_list[0].to_table(view=args.profile_view))
+
+    def _profile_metric_value(self, dp, row_mode, key):
+        if not dp._can_render_row(row_mode, key):
+            return ""
+        if row_mode == "std":
+            return dp.fc[key]
+        if row_mode == "co":
+            return dp.fcd[key]
+        return dp.fc[key]
+
+    def _profile_metric_cell(self, dp, row_mode, key, component_width, compound_width):
+        if not dp._can_render_row(row_mode, key):
+            return ""
+        if row_mode == "std":
+            component_col = dp.fc[key]
+            compound_col = dp.fcd[key]
+        elif row_mode == "co":
+            component_col = ""
+            compound_col = dp.fcd[key]
+        else:
+            component_col = ""
+            compound_col = dp.fc[key]
+        return component_col.rjust(component_width) + " " + compound_col.rjust(compound_width)
+
+    def profile_compare(self, args):
+        if len(args.display_labels) < 2:
+            self._eprint("Please provide at least two place names to compare.")
+            return
+
+        dps = []
+        for display_label in args.display_labels:
+            try:
+                dps.extend(self.engine.get_dp(display_label=display_label))
+            except ValueError:
+                self._eprint(f"No geography found for display label: {display_label}")
+                return
+
+        sections = dps[0]._sections_for_view(args.profile_view)
+        rows = []
+        for section_title, section_rows in sections:
+            renderable_rows = [
+                (row_mode, key)
+                for row_mode, key in section_rows
+                if any(dp._can_render_row(row_mode, key) for dp in dps)
+            ]
+            if not renderable_rows:
+                continue
+            rows.append(("section", section_title, None))
+            for row_mode, key in renderable_rows:
+                rows.append(("metric", row_mode, key))
+
+        metric_labels = []
+        for row_type, row_mode_or_section, key in rows:
+            if row_type == "section":
+                metric_labels.append(row_mode_or_section)
+            else:
+                metric_labels.append(dps[0].rh.get(key, key))
+        metric_width = max([30, len("Metric")] + [len(label) for label in metric_labels])
+
+        county_headers = [
+            ", ".join(dp.counties_display) if getattr(dp, "counties_display", None) else "" for dp in dps
+        ]
+        per_geo_component_widths = []
+        per_geo_compound_widths = []
+        min_name_width = 24
+        for dp in dps:
+            component_lengths = []
+            compound_lengths = []
+            for row_type, row_mode_or_section, key in rows:
+                if row_type == "metric":
+                    if row_mode_or_section == "std":
+                        component_lengths.append(len(dp.fc[key]))
+                        compound_lengths.append(len(dp.fcd[key]))
+                    elif row_mode_or_section == "co":
+                        compound_lengths.append(len(dp.fcd[key]))
+                    else:
+                        compound_lengths.append(len(dp.fc[key]))
+            per_geo_component_widths.append(max([15] + component_lengths))
+            per_geo_compound_widths.append(max([15] + compound_lengths))
+
+        shared_component_width = max(per_geo_component_widths) if per_geo_component_widths else 15
+        shared_compound_width = max(per_geo_compound_widths) if per_geo_compound_widths else 15
+        shared_data_width = shared_component_width + 1 + shared_compound_width
+        shared_col_width = max(
+            [min_name_width, shared_data_width]
+            + [len(dp.name) for dp in dps]
+            + [len(county_header) for county_header in county_headers]
+        )
+        col_widths = [shared_col_width for _ in dps]
+
+        divider_width = metric_width + sum(col_widths) + len(dps) + 2
+        print("-" * divider_width)
+        print(
+            " "
+            + self._fit("Metric", metric_width, truncate=False)
+            + " "
+            + " ".join(
+                self._fit(dp.name, col_widths[idx]) for idx, dp in enumerate(dps)
+            )
+        )
+        print(
+            " "
+            + self._fit("", metric_width, truncate=False)
+            + " "
+            + " ".join(
+                self._fit(county_headers[idx], col_widths[idx]) for idx in range(len(dps))
+            )
+        )
+        print("-" * divider_width)
+
+        for row_type, row_mode_or_section, key in rows:
+            if row_type == "section":
+                print(
+                    " "
+                    + self._fit(row_mode_or_section, metric_width, truncate=False)
+                    + " "
+                    + " ".join("".ljust(col_widths[idx]) for idx in range(len(dps)))
+                )
+                continue
+
+            metric_label = dps[0].rh.get(key, key)
+            values = [
+                self._fit(
+                    self._profile_metric_cell(
+                        dp,
+                        row_mode_or_section,
+                        key,
+                        shared_component_width,
+                        shared_compound_width,
+                    ),
+                    col_widths[idx],
+                )
+                for idx, dp in enumerate(dps)
+            ]
+            print(
+                " "
+                + self._fit(metric_label, metric_width, truncate=False)
+                + " "
+                + " ".join(values)
+            )
+
+        print("-" * divider_width)
 
     def resolve_geography(self, args):
         matches = self.engine.resolve_geography(**vars(args))
