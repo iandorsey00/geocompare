@@ -1,6 +1,7 @@
 import argparse
 import json
 import logging
+import re
 import sys
 
 from geocompare import __version__
@@ -407,8 +408,11 @@ class GeoCompareCLI:
                 if group_sl == "040":
                     group_name = self.st.get_name(group)
                 elif group_sl == "050":
-                    county_key = "us:" + group + "/county"
-                    group_name = self.kt.key_to_county_name[county_key]
+                    if re.match(r"^\d{5}:county$", group):
+                        group_name = self.ct.county_geoid_to_name[group.split(":", 1)[0]]
+                    else:
+                        county_key = "us:" + group + "/county"
+                        group_name = self.kt.key_to_county_name[county_key]
                 elif group_sl == "860":
                     group_name = group
                 else:
@@ -480,8 +484,11 @@ class GeoCompareCLI:
                 if group_sl == "040":
                     group_name = self.st.get_name(group)
                 elif group_sl == "050":
-                    key = "us:" + group + "/county"
-                    group_name = self.kt.key_to_county_name[key]
+                    if re.match(r"^\d{5}:county$", group):
+                        group_name = self.ct.county_geoid_to_name[group.split(":", 1)[0]]
+                    else:
+                        key = "us:" + group + "/county"
+                        group_name = self.kt.key_to_county_name[key]
                 elif group_sl == "860":
                     group_name = group
                 else:

@@ -3,6 +3,7 @@ import difflib
 import heapq
 import logging
 import operator
+import re
 import sys
 import time
 from math import atan2, cos, radians, sin, sqrt
@@ -40,6 +41,7 @@ class Engine:
         self.d = None
         self._dp_by_name = {}
         self._gv_by_name = {}
+        self._data_identifier_index = {}
         self.identity_index = None
 
     def create_data_products(self, data_path):
@@ -103,7 +105,49 @@ class Engine:
 
         self._dp_by_name = {dp.name: dp for dp in demographicprofiles}
         self._gv_by_name = {gv.name: gv for gv in geovectors}
+        self._data_identifier_index = self._build_data_identifier_index(demographicprofiles)
         self.identity_index = PlaceIdentityIndex.from_demographic_profiles(demographicprofiles)
+
+    def _build_data_identifier_index(self, demographicprofiles):
+        index = {}
+
+        for dp in demographicprofiles:
+            for key in dp.rc.keys():
+                index.setdefault(
+                    key,
+                    {
+                        "key": key,
+                        "store": "rc",
+                        "display_store": "fc",
+                        "label": dp.rh.get(key, self._format_identifier_label(key)),
+                    },
+                )
+
+            for key in dp.c.keys():
+                if key in dp.rc:
+                    identifier = f"{key}_pct"
+                    label = dp.rh.get(key, self._format_identifier_label(key))
+                    index.setdefault(
+                        identifier,
+                        {
+                            "key": key,
+                            "store": "c",
+                            "display_store": "fcd",
+                            "label": f"{label} (%)",
+                        },
+                    )
+                else:
+                    index.setdefault(
+                        key,
+                        {
+                            "key": key,
+                            "store": "c",
+                            "display_store": "fcd",
+                            "label": dp.rh.get(key, self._format_identifier_label(key)),
+                        },
+                    )
+
+        return index
 
     def refresh_cache(self):
         """Reload data products and query indexes."""
@@ -141,6 +185,8 @@ class Engine:
         return hasattr(self.primary_repository, method_name)
 
     def _get_county_geoid(self, state_abbrev):
+        if re.match(r"^\d{5}:county$", state_abbrev):
+            return state_abbrev.split(":", 1)[0]
         key = "us:" + state_abbrev + "/county"
         county_name = self.kt.key_to_county_name[key]
         return self.ct.county_name_to_geoid[county_name]
@@ -177,15 +223,11 @@ class Engine:
         }
 
     def list_data_identifiers(self, fetch_one):
-        identifiers = set(fetch_one.rc.keys())
-
-        for key in fetch_one.c.keys():
-            if key in fetch_one.rc:
-                identifiers.add(f"{key}_pct")
-            else:
-                identifiers.add(key)
-
-        return sorted(identifiers)
+        if hasattr(self, "d"):
+            self.get_data_products()
+        if getattr(self, "_data_identifier_index", None):
+            return sorted(self._data_identifier_index.keys())
+        return []
 
     def _format_identifier_label(self, identifier):
         return identifier.replace("_", " ")
@@ -194,6 +236,11 @@ class Engine:
         requested = str(data_identifier or "").strip().lower()
         if not requested:
             raise ValueError("Missing data identifier.")
+
+        if hasattr(self, "d"):
+            self.get_data_products()
+        if requested in getattr(self, "_data_identifier_index", {}):
+            return self._data_identifier_index[requested]
 
         if requested in fetch_one.rc:
             return {
