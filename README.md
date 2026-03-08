@@ -1,7 +1,7 @@
 # GeoCompare
 
-GeoCompare is a program that allows users to easily view and organized and
-processed demographic data without the need to modify any data files.
+GeoCompare is a CLI for building and querying standardized local demographic
+data products from public datasets, without manual data-file editing.
 
 See the [Wiki](https://github.com/iandorsey00/geocompare/wiki) for documentation.
 Architecture details: [doc/architecture.md](doc/architecture.md).
@@ -49,6 +49,11 @@ python3 scripts/fetch_latest_acs.py --out-dir /path/to/data --archive-existing -
 and latest compatible gazetteer year (`<YEAR>_Gaz_*_national.txt`) in the input
 directory.
 
+GeoCompare supports two overlay types:
+
+- Built-in overlays: canonical crime and voter files.
+- Custom overlays: private/user-defined metrics (including submodule-fed data).
+
 Optional overlays can be placed in the same data directory:
 
 - `overlays/crime_data.csv`
@@ -65,8 +70,49 @@ python3 scripts/fetch_overlays.py \
   --voter-source /path/or/url/to/voter.csv
 ```
 
-Crime metrics appear under `CRIME`, voter metrics under `CIVICS`, and other
-private/custom metrics in `project_data.csv` appear under `PROJECT DATA`.
+Crime metrics appear under `CRIME`, voter metrics under `VOTER REGISTRATION`,
+and custom metrics in `project_data.csv` appear under `PROJECT DATA`.
+
+### Custom Overlay Conventions
+
+For custom overlays (for example, private submodule outputs):
+
+- Keep one canonical CSV with `GEOID` and numeric metric columns.
+- Prefer `project_` prefixes for private/custom identifiers.
+- Use `_pct` suffix for percentages.
+
+Example `project_data.csv`:
+
+```csv
+GEOID,project_social_alignment_index,project_social_alignment_confidence_pct
+06037,63.2,91.5
+06073,58.8,88.1
+```
+
+Recommended metadata file (`overlay_manifest.json`) in your overlay repo:
+
+```json
+{
+  "overlay": "social-alignment",
+  "metrics": [
+    {
+      "key": "project_social_alignment_index",
+      "label": "Social alignment index",
+      "section": "PROJECT DATA",
+      "type": "score"
+    },
+    {
+      "key": "project_social_alignment_confidence_pct",
+      "label": "Social alignment confidence",
+      "section": "PROJECT DATA",
+      "type": "pct"
+    }
+  ]
+}
+```
+
+`overlay_manifest.json` is optional today, but recommended for stable naming,
+labels, and section placement across overlay builds.
 
 Query workflows:
 
@@ -100,8 +146,8 @@ Run local quality checks:
 
 ```bash
 python3 -m pip install -e ".[dev]"
-ruff check tests geocompare/identity geocompare/repository/sqlite_repository.py geocompare/interfaces/cli.py scripts/benchmark_queries.py
-black --check tests geocompare/identity geocompare/repository/sqlite_repository.py geocompare/interfaces/cli.py scripts/benchmark_queries.py
+ruff check tests geocompare/identity geocompare/repository/sqlite_repository.py geocompare/interfaces/cli.py scripts/fetch_overlays.py
+black --check tests geocompare/identity geocompare/repository/sqlite_repository.py geocompare/interfaces/cli.py scripts/fetch_overlays.py
 mypy geocompare/identity geocompare/repository/sqlite_repository.py geocompare/interfaces/cli.py
 pytest -q
 ```
