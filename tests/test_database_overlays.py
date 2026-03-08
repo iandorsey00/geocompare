@@ -10,6 +10,7 @@ class FakeDP:
         self.added = []
 
     def add_custom_metric(self, **kwargs):
+        self.rc[kwargs["key"]] = kwargs["value"]
         self.added.append(kwargs)
 
 
@@ -95,7 +96,7 @@ def test_apply_overlays_derives_crime_rates_from_counts():
     assert round(added["total_crime_rate"]["value"], 1) == 10000.0
 
 
-def test_apply_overlays_adds_voter_metrics_and_pct_values():
+def test_apply_overlays_adds_voter_metrics_with_inline_percentages():
     dp = FakeDP("16000US0601000", 2000)
 
     db = Database.__new__(Database)
@@ -117,8 +118,11 @@ def test_apply_overlays_adds_voter_metrics_and_pct_values():
     assert "republican_voters_pct" in added
     assert "other_voters_pct" in added
 
-    assert added["registered_voters"]["section_title"] == "CIVICS"
+    assert added["registered_voters"]["section_title"] == "VOTER REGISTRATION"
     assert added["registered_voters"]["value_display"] == "1,000"
+    assert added["registered_voters"]["compound_display"] == "50.0%"
+    assert added["democratic_voters"]["compound_display"] == "52.0%"
+    assert added["republican_voters"]["compound_display"] == "38.0%"
     assert round(added["democratic_voters_pct"]["value"], 1) == 52.0
     assert round(added["republican_voters_pct"]["value"], 1) == 38.0
     assert round(added["other_voters_pct"]["value"], 1) == 10.0

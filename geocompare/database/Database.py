@@ -49,12 +49,12 @@ class Database:
     }
 
     CRIME_METRIC_DEFS = [
-        ('violent_crime_count', 'Violent crime incidents', ''),
-        ('property_crime_count', 'Property crime incidents', ''),
-        ('total_crime_count', 'Total crime incidents', ''),
-        ('violent_crime_rate', 'Violent crime rate', '/100k'),
-        ('property_crime_rate', 'Property crime rate', '/100k'),
-        ('total_crime_rate', 'Total crime rate', '/100k'),
+        ('violent_crime_count', 'Violent crimes (NIBRS 2024)'),
+        ('property_crime_count', 'Property crimes (NIBRS 2024)'),
+        ('total_crime_count', 'Total crimes (NIBRS 2024)'),
+        ('violent_crime_rate', 'Violent crime rate per 100k (NIBRS 2024)'),
+        ('property_crime_rate', 'Property crime rate per 100k (NIBRS 2024)'),
+        ('total_crime_rate', 'Total crime rate per 100k (NIBRS 2024)'),
     ]
 
     VOTER_PERCENT_METRIC_DEFS = [
@@ -272,6 +272,13 @@ class Database:
 
     def _load_overlays(self, path):
         merged = {}
+        self.overlay_load_stats = {
+            'files_loaded': [],
+            'files_failed': [],
+            'rows_loaded': 0,
+            'geoids_loaded': 0,
+            'metrics_loaded': 0,
+        }
         for overlay_path in self._iter_overlay_candidates(path):
             try:
                 if overlay_path.suffix.lower() == '.json':
@@ -280,11 +287,24 @@ class Database:
                     overlay_values = self._load_csv_overlay(overlay_path)
             except (OSError, ValueError, json.JSONDecodeError) as e:
                 logger.warning('Unable to load overlay %s: %s', overlay_path.name, e)
+                self.overlay_load_stats['files_failed'].append(overlay_path.name)
                 continue
 
+            geoid_count = len(overlay_values)
+            metric_count = sum(len(metrics) for metrics in overlay_values.values())
+            self.overlay_load_stats['files_loaded'].append(
+                {
+                    'name': overlay_path.name,
+                    'geoids': geoid_count,
+                    'metrics': metric_count,
+                }
+            )
+            self.overlay_load_stats['rows_loaded'] += geoid_count
+            self.overlay_load_stats['metrics_loaded'] += metric_count
             for geoid, metrics in overlay_values.items():
                 merged.setdefault(geoid, {}).update(metrics)
 
+        self.overlay_load_stats['geoids_loaded'] = len(merged)
         return merged
 
     def _read_gaz_rows(self, file_path):
@@ -305,11 +325,11 @@ class Database:
         compound_display = None
         compound_suffix = '%'
 
-        for known_key, known_label, suffix in self.CRIME_METRIC_DEFS:
+        for known_key, known_label in self.CRIME_METRIC_DEFS:
             if key == known_key:
                 label = known_label
-                if suffix == '/100k':
-                    value_display = f'{metric_value:,.1f}{suffix}'
+                if key.endswith('_rate'):
+                    value_display = f'{metric_value:,.1f}'
                 else:
                     value_display = f'{metric_value:,.0f}'
                 break
@@ -322,6 +342,25 @@ class Database:
         if key == 'registered_voters':
             label = 'Registered voters'
             value_display = f'{metric_value:,.0f}'
+        elif key == 'democratic_voters':
+            label = 'Democratic voters'
+        elif key == 'republican_voters':
+            label = 'Republican voters'
+        elif key == 'other_voters':
+            label = 'Other voters'
+
+        # For voter registration metrics, show percentages inline in the same row.
+        if key == 'registered_voters' and dp.rc.get('population', 0):
+            compound_value = metric_value / dp.rc['population'] * 100.0
+            compound_display = f'{compound_value:,.1f}%'
+            compound_suffix = None
+
+        if key in {'democratic_voters', 'republican_voters', 'other_voters'} and dp.rc.get('registered_voters', 0):
+            registered = dp.rc['registered_voters']
+            if registered:
+                compound_value = metric_value / registered * 100.0
+                compound_display = f'{compound_value:,.1f}%'
+                compound_suffix = None
 
         if value_display is None:
             if float(metric_value).is_integer():
@@ -334,6 +373,14 @@ class Database:
             compound_display = f'{compound_value:,.1f}/100k'
             compound_suffix = None
 
+        show_in_profile = True
+        if section_title == 'CRIME' and key.endswith('_rate'):
+            show_in_profile = False
+        if section_title == 'VOTER REGISTRATION' and (
+            key in {'democratic_voters_pct', 'republican_voters_pct', 'other_voters_pct'}
+        ):
+            show_in_profile = False
+
         dp.add_custom_metric(
             section_title=section_title,
             key=key,
@@ -343,6 +390,7 @@ class Database:
             compound_value=compound_value,
             compound_display=compound_display,
             compound_suffix=compound_suffix,
+            show_in_profile=show_in_profile,
         )
 
     def _derive_crime_rate_metrics(self, metrics, population):
@@ -406,17 +454,27 @@ class Database:
         if 'crime' in lowered:
             return 'CRIME'
         if 'voter' in lowered or lowered.endswith('_pct'):
-            return 'CIVICS'
+            return 'VOTER REGISTRATION'
         return 'PROJECT DATA'
 
     def apply_overlays(self):
         if not self.overlays:
-            return
+            return {
+                'overlay_geoids': 0,
+                'matched_profiles': 0,
+                'metrics_added': 0,
+                'unmatched_overlay_geoids': 0,
+            }
 
         dp_index = defaultdict(list)
         for dp in self.demographicprofiles:
             for key in self._normalize_geoid_keys(dp.geoid):
                 dp_index[key].append(dp)
+
+        matched_geoids = 0
+        unmatched_geoids = 0
+        matched_profiles = set()
+        metrics_added = 0
 
         for geoid, metrics in self.overlays.items():
             matches = {}
@@ -424,9 +482,12 @@ class Database:
                 for dp in dp_index.get(key, []):
                     matches[dp.geoid] = dp
             if not matches:
+                unmatched_geoids += 1
                 continue
+            matched_geoids += 1
 
             for dp in matches.values():
+                matched_profiles.add(dp.geoid)
                 effective_metrics = dict(metrics)
                 effective_metrics.update(
                     self._derive_crime_rate_metrics(
@@ -441,6 +502,15 @@ class Database:
                 for metric_key, metric_value in effective_metrics.items():
                     section = self._overlay_section(metric_key)
                     self._add_overlay_metric(dp, section, metric_key, metric_value)
+                    metrics_added += 1
+
+        return {
+            'overlay_geoids': len(self.overlays),
+            'matched_overlay_geoids': matched_geoids,
+            'unmatched_overlay_geoids': unmatched_geoids,
+            'matched_profiles': len(matched_profiles),
+            'metrics_added': metrics_added,
+        }
 
     def dbapi_qm_substr(self, columns_len):
         '''Get the DBAPI question mark substring'''
@@ -858,6 +928,21 @@ class Database:
             f"gazetteer year {self.gh_year}"
         )
         self.overlays = self._load_overlays(self.data_dir)
+        overlay_stats = getattr(self, 'overlay_load_stats', {})
+        loaded_files = overlay_stats.get('files_loaded', [])
+        failed_files = overlay_stats.get('files_failed', [])
+        if loaded_files:
+            loaded_desc = ', '.join(
+                f"{item['name']} ({item['geoids']} geoids)"
+                for item in loaded_files
+            )
+            self._progress(
+                f"Loaded overlays: {loaded_desc}; merged geoids={overlay_stats.get('geoids_loaded', 0)}"
+            )
+        else:
+            self._progress("No overlay files found (optional).")
+        if failed_files:
+            self._progress(f"Overlay files failed to load: {', '.join(failed_files)}")
 
         self.st = StateLookup()
 
@@ -935,6 +1020,7 @@ class Database:
 
         # Create table
         self.create_table(this_table_name, columns, column_defs, rows)
+        self._progress(f"Loaded geographies rows: {len(rows):,}")
 
         # Debug output
         self.debug_output_table(this_table_name)
@@ -1081,6 +1167,7 @@ class Database:
 
         # Create table
         self.create_table(this_table_name, columns, column_defs, rows)
+        self._progress(f"Loaded geoheaders rows: {len(rows):,}")
 
         # Debug output
         self.debug_output_table(this_table_name)
@@ -1168,12 +1255,22 @@ class Database:
             except AttributeError as e:
                 logger.warning('AttributeError while creating DemographicProfile: %s', e)
                 logger.debug('Bad row: %s', tuple(row))
+        self._progress(f"Created demographic profiles: {len(self.demographicprofiles):,}")
 
         # Debug output
         self.debug_output_list('demographicprofiles')
 
         # Optional overlay enrichment (crime + personal project metrics).
-        self.apply_overlays()
+        overlay_apply_stats = self.apply_overlays()
+        if overlay_apply_stats.get('overlay_geoids', 0):
+            self._progress(
+                "Applied overlays: "
+                f"geoids={overlay_apply_stats.get('overlay_geoids', 0):,}, "
+                f"matched_geoids={overlay_apply_stats.get('matched_overlay_geoids', 0):,}, "
+                f"matched_profiles={overlay_apply_stats.get('matched_profiles', 0):,}, "
+                f"metrics_added={overlay_apply_stats.get('metrics_added', 0):,}, "
+                f"unmatched_geoids={overlay_apply_stats.get('unmatched_overlay_geoids', 0):,}"
+            )
 
         # Medians and standard deviations #####################################
 
@@ -1228,6 +1325,8 @@ class Database:
         # GeoVectors ##########################################################
 
         self.geovectors = []
+        geovector_failures = 0
+        geovector_failure_names = []
 
         for row in self.c.execute('SELECT * from geocompare_data'):
             try:
@@ -1242,10 +1341,29 @@ class Database:
             # If a TypeError is thrown because some data is unavailable, just
             # don't make that GeoVector and print a debugging message.
             except (TypeError, ValueError, AttributeError):
-                logger.warning(
-                    'Inadequate data for GeoVector creation: %s',
-                    row['NAME'],
+                geovector_failures += 1
+                if len(geovector_failure_names) < 25:
+                    geovector_failure_names.append(row['NAME'])
+
+        if geovector_failures:
+            sample_count = min(10, len(geovector_failure_names))
+            logger.warning(
+                'Skipped GeoVector creation for %s geographies due to inadequate data '
+                '(sample %s): %s',
+                f'{geovector_failures:,}',
+                sample_count,
+                '; '.join(geovector_failure_names[:sample_count]),
+            )
+            if len(geovector_failure_names) > sample_count:
+                logger.info(
+                    'Additional skipped GeoVector samples (%s): %s',
+                    len(geovector_failure_names) - sample_count,
+                    '; '.join(geovector_failure_names[sample_count:]),
                 )
+        self._progress(
+            f"Created geovectors: {len(self.geovectors):,} "
+            f"(skipped: {geovector_failures:,})"
+        )
 
         # Debug output
         self.debug_output_list('geovectors')

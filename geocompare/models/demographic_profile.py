@@ -46,14 +46,15 @@ class DemographicProfile:
         # Population category
         self.rl['population'] = 'Total population'
         self.rl['population_density'] = 'Population density'
-        self.rl['under_18'] = 'Population under 18'
-        self.rl['age_65_plus'] = 'Population 65 and over'
 
         # Geography category
         self.rl['land_area'] = 'Land area'
         self.rl['latitude'] = 'Latitude'
         self.rl['longitude'] = 'Longitude'
         self.rl['median_age'] = 'Median age'
+        self.rl['under_18'] = 'Population under 18'
+        self.rl['population_18_to_64'] = 'Population 18 to 64'
+        self.rl['age_65_plus'] = 'Population 65 and over'
 
         # Race category
         self.rl['white_alone'] = 'White alone'
@@ -95,23 +96,24 @@ class DemographicProfile:
         # Population category
         self.ind['population'] = 0
         self.ind['population_density'] = 0
-        self.ind['under_18'] = 0
-        self.ind['age_65_plus'] = 0
 
         # Geography category
         self.ind['land_area'] = 0
         self.ind['latitude'] = 0
         self.ind['longitude'] = 0
         self.ind['median_age'] = 0
+        self.ind['under_18'] = 0
+        self.ind['population_18_to_64'] = 0
+        self.ind['age_65_plus'] = 0
 
         # Race category
-        self.ind['white_alone'] = 4
-        self.ind['white_alone_not_hispanic_or_latino'] = 6
-        self.ind['black_alone'] = 4
-        self.ind['asian_alone'] = 4
-        self.ind['other_race']  = 4
+        self.ind['white_alone'] = 2
+        self.ind['white_alone_not_hispanic_or_latino'] = 4
+        self.ind['black_alone'] = 2
+        self.ind['asian_alone'] = 2
+        self.ind['other_race']  = 2
         # Technically not a race, but included in the race category
-        self.ind['hispanic_or_latino'] = 4
+        self.ind['hispanic_or_latino'] = 2
         self.ind['italian_alone'] = 0
 
         # Education category
@@ -151,18 +153,21 @@ class DemographicProfile:
             ('POPULATION', [
                 ('nc', 'population'),
                 ('co', 'population_density'),
+            ]),
+            ('AGE', [
+                ('nc', 'median_age'),
                 ('std', 'under_18'),
+                ('std', 'population_18_to_64'),
                 ('std', 'age_65_plus'),
             ]),
-            ('AGE', [('nc', 'median_age')]),
-            ('  Race', [
+            ('RACE', [
                 ('std', 'white_alone'),
                 ('std', 'white_alone_not_hispanic_or_latino'),
                 ('std', 'black_alone'),
                 ('std', 'asian_alone'),
                 ('std', 'other_race'),
             ]),
-            ('  Hispanic or Latino (of any race)', [('std', 'hispanic_or_latino')]),
+            ('Hispanic or Latino (of any race)', [('std', 'hispanic_or_latino')]),
             ('EDUCATION', [
                 ('std', 'population_25_years_and_older'),
                 ('std', 'bachelors_degree_or_higher'),
@@ -190,8 +195,6 @@ class DemographicProfile:
             ('POPULATION', [
                 ('nc', 'population'),
                 ('co', 'population_density'),
-                ('std', 'under_18'),
-                ('std', 'age_65_plus'),
             ]),
             ('INCOME', [('nc', 'per_capita_income'), ('nc', 'median_household_income')]),
             ('ECONOMY', [
@@ -230,6 +233,7 @@ class DemographicProfile:
             + parse_number(db_row['B01001_44']) + parse_number(db_row['B01001_45']) \
             + parse_number(db_row['B01001_46']) + parse_number(db_row['B01001_47']) \
             + parse_number(db_row['B01001_48']) + parse_number(db_row['B01001_49'])
+        self.rc['population_18_to_64'] = self.rc['population'] - self.rc['under_18'] - self.rc['age_65_plus']
 
         # Race category
         self.rc['white_alone'] = parse_number(db_row['B02001_2'])
@@ -322,6 +326,7 @@ class DemographicProfile:
             self.c['white_alone_not_hispanic_or_latino'] = self.rc['white_alone_not_hispanic_or_latino'] / self.rc['population'] * 100.0
             self.c['italian_alone'] = self.rc['italian_alone'] / self.rc['population'] * 100.0
             self.c['under_18'] = self.rc['under_18'] / self.rc['population'] * 100.0
+            self.c['population_18_to_64'] = self.rc['population_18_to_64'] / self.rc['population'] * 100.0
             self.c['age_65_plus'] = self.rc['age_65_plus'] / self.rc['population'] * 100.0
         else:
             # Race category - Percentages of the total population
@@ -333,6 +338,7 @@ class DemographicProfile:
             self.c['white_alone_not_hispanic_or_latino'] = 0.0
             self.c['italian_alone'] = 0.0
             self.c['under_18'] = 0.0
+            self.c['population_18_to_64'] = 0.0
             self.c['age_65_plus'] = 0.0
 
         if self.rc['population_25_years_and_older'] != 0 and self.rc['population'] != 0:
@@ -415,6 +421,7 @@ class DemographicProfile:
         compound_value=None,
         compound_display=None,
         compound_suffix='%',
+        show_in_profile=True,
     ):
         self.rl[key] = label
         self.ind[key] = indent
@@ -434,12 +441,13 @@ class DemographicProfile:
             )
             row_mode = 'std'
 
-        for idx, (existing_title, rows) in enumerate(self.display_sections):
-            if existing_title == section_title:
-                rows.append((row_mode, key))
-                self.display_sections[idx] = (existing_title, rows)
-                return
-        self.display_sections.append((section_title, [(row_mode, key)]))
+        if show_in_profile:
+            for idx, (existing_title, rows) in enumerate(self.display_sections):
+                if existing_title == section_title:
+                    rows.append((row_mode, key))
+                    self.display_sections[idx] = (existing_title, rows)
+                    return
+            self.display_sections.append((section_title, [(row_mode, key)]))
 
     def _sections_for_view(self, view='full'):
         if view == 'compact':
