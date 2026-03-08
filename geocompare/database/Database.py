@@ -568,7 +568,7 @@ class Database:
         lowered = metric_key.lower()
         if "crime" in lowered:
             return "CRIME"
-        if "voter" in lowered or lowered.endswith("_pct"):
+        if "voter" in lowered:
             return "VOTER REGISTRATION"
         return "PROJECT DATA"
 
