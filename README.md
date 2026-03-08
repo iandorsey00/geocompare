@@ -51,13 +51,22 @@ directory.
 
 Optional overlays can be placed in the same data directory:
 
-- `overlays/crime_data.csv` (or `crime_data.csv`)
-- `overlays/project_data.csv` (or `project_data.csv`)
-- `overlays/social_alignment.csv`
+- `overlays/crime_data.csv`
+- `overlays/voter_data.csv`
+- `overlays/project_data.csv`
 
 Overlay files should include a `GEOID` column plus numeric metric columns.
-Crime metrics (column names containing `crime`) appear under a `CRIME` section
-in demographic profiles. Other overlay metrics appear under `PROJECT DATA`.
+You can also normalize sources into canonical overlays automatically:
+
+```bash
+python3 scripts/fetch_overlays.py \
+  --out-dir /path/to/data \
+  --crime-source /path/or/url/to/crime.csv \
+  --voter-source /path/or/url/to/voter.csv
+```
+
+Crime metrics appear under `CRIME`, voter metrics under `CIVICS`, and other
+private/custom metrics in `project_data.csv` appear under `PROJECT DATA`.
 
 Query workflows:
 

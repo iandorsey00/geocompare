@@ -57,6 +57,12 @@ class Database:
         ('total_crime_rate', 'Total crime rate', '/100k'),
     ]
 
+    VOTER_PERCENT_METRIC_DEFS = [
+        ('percent_democratic', 'Percent Democratic'),
+        ('percent_republican', 'Percent Republican'),
+        ('percent_other', 'Percent Other'),
+    ]
+
     ###########################################################################
     # Helper methods for __init__
 
@@ -195,13 +201,9 @@ class Database:
     def _iter_overlay_candidates(self, path):
         overlay_dir = path / 'overlays'
         candidates = [
-            path / 'crime_data.csv',
-            path / 'crime.csv',
             overlay_dir / 'crime_data.csv',
-            overlay_dir / 'crime.csv',
-            path / 'project_data.csv',
             overlay_dir / 'project_data.csv',
-            overlay_dir / 'social_alignment.csv',
+            overlay_dir / 'voter_data.csv',
         ]
         for candidate in candidates:
             if candidate.exists():
@@ -311,11 +313,17 @@ class Database:
                 else:
                     value_display = f'{metric_value:,.0f}'
                 break
+        for known_key, known_label in self.VOTER_PERCENT_METRIC_DEFS:
+            if key == known_key:
+                label = known_label
+                value_display = f'{metric_value:,.1f}%'
+                break
 
-        if key.endswith('social_alignment_index'):
-            label = 'Social alignment index'
-            value_display = f'{metric_value:,.3f}'
-        elif value_display is None:
+        if key == 'registered_voters':
+            label = 'Registered voters'
+            value_display = f'{metric_value:,.0f}'
+
+        if value_display is None:
             if float(metric_value).is_integer():
                 value_display = f'{metric_value:,.0f}'
             else:
@@ -337,6 +345,70 @@ class Database:
             compound_suffix=compound_suffix,
         )
 
+    def _derive_crime_rate_metrics(self, metrics, population):
+        if not population:
+            return {}
+
+        derived = {}
+        for count_key in (
+            'violent_crime_count',
+            'property_crime_count',
+            'total_crime_count',
+        ):
+            rate_key = count_key.replace('_count', '_rate')
+            if rate_key in metrics:
+                continue
+
+            count_value = metrics.get(count_key)
+            if count_value is None:
+                continue
+            try:
+                count_value = float(count_value)
+            except (TypeError, ValueError):
+                continue
+
+            derived[rate_key] = count_value / population * 100000.0
+
+        return derived
+
+    def _derive_voter_share_metrics(self, metrics):
+        registered = metrics.get('registered_voters')
+        if not registered:
+            return {}
+        try:
+            registered = float(registered)
+        except (TypeError, ValueError):
+            return {}
+        if registered <= 0:
+            return {}
+
+        derived = {}
+        for party in ('democratic', 'republican', 'other'):
+            percent_key = f'percent_{party}'
+            if percent_key in metrics:
+                continue
+
+            count_key = f'{party}_voters'
+            count_value = metrics.get(count_key)
+            if count_value is None:
+                continue
+            try:
+                count_value = float(count_value)
+            except (TypeError, ValueError):
+                continue
+
+            derived[percent_key] = count_value / registered * 100.0
+
+        return derived
+
+    def _overlay_section(self, metric_key):
+        lowered = metric_key.lower()
+        if 'crime' in lowered:
+            return 'CRIME'
+        if 'voter' in lowered or lowered.startswith('percent_'):
+            return 'CIVICS'
+        return 'PROJECT DATA'
+
     def apply_overlays(self):
         if not self.overlays:
             return
@@ -354,8 +426,19 @@ class Database:
                 continue
 
             for dp in matches:
-                for metric_key, metric_value in metrics.items():
-                    section = 'CRIME' if 'crime' in metric_key.lower() else 'PROJECT DATA'
+                effective_metrics = dict(metrics)
+                effective_metrics.update(
+                    self._derive_crime_rate_metrics(
+                        effective_metrics,
+                        dp.rc.get('population', 0),
+                    )
+                )
+                effective_metrics.update(
+                    self._derive_voter_share_metrics(effective_metrics)
+                )
+
+                for metric_key, metric_value in effective_metrics.items():
+                    section = self._overlay_section(metric_key)
                     self._add_overlay_metric(dp, section, metric_key, metric_value)
 
     def dbapi_qm_substr(self, columns_len):

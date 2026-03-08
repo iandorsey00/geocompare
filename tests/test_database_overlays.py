@@ -51,7 +51,7 @@ def test_apply_overlays_adds_crime_and_project_metrics():
     db.overlays = {
         "0601000": {
             "violent_crime_count": 50.0,
-            "social_alignment_index": 0.382,
+            "custom_index": 0.382,
         }
     }
 
@@ -59,14 +59,70 @@ def test_apply_overlays_adds_crime_and_project_metrics():
 
     added_keys = {row["key"] for row in dp.added}
     assert "violent_crime_count" in added_keys
-    assert "project_social_alignment_index" in added_keys
+    assert "project_custom_index" in added_keys
 
     crime_metric = next(row for row in dp.added if row["key"] == "violent_crime_count")
     assert crime_metric["section_title"] == "CRIME"
     assert crime_metric["compound_display"].endswith("/100k")
 
-    project_metric = next(row for row in dp.added if row["key"] == "project_social_alignment_index")
+    project_metric = next(row for row in dp.added if row["key"] == "project_custom_index")
     assert project_metric["section_title"] == "PROJECT DATA"
+
+
+def test_apply_overlays_derives_crime_rates_from_counts():
+    dp = FakeDP("16000US0601000", 2000)
+
+    db = Database.__new__(Database)
+    db.demographicprofiles = [dp]
+    db.overlays = {
+        "0601000": {
+            "violent_crime_count": 50.0,
+            "property_crime_count": 150.0,
+            "total_crime_count": 200.0,
+        }
+    }
+
+    db.apply_overlays()
+
+    added = {row["key"]: row for row in dp.added}
+
+    assert "violent_crime_rate" in added
+    assert "property_crime_rate" in added
+    assert "total_crime_rate" in added
+
+    assert round(added["violent_crime_rate"]["value"], 1) == 2500.0
+    assert round(added["property_crime_rate"]["value"], 1) == 7500.0
+    assert round(added["total_crime_rate"]["value"], 1) == 10000.0
+
+
+def test_apply_overlays_adds_voter_metrics_and_percentages():
+    dp = FakeDP("16000US0601000", 2000)
+
+    db = Database.__new__(Database)
+    db.demographicprofiles = [dp]
+    db.overlays = {
+        "0601000": {
+            "registered_voters": 1000.0,
+            "democratic_voters": 520.0,
+            "republican_voters": 380.0,
+            "other_voters": 100.0,
+        }
+    }
+
+    db.apply_overlays()
+
+    added = {row["key"]: row for row in dp.added}
+    assert "registered_voters" in added
+    assert "percent_democratic" in added
+    assert "percent_republican" in added
+    assert "percent_other" in added
+
+    assert added["registered_voters"]["section_title"] == "CIVICS"
+    assert added["registered_voters"]["value_display"] == "1,000"
+    assert round(added["percent_democratic"]["value"], 1) == 52.0
+    assert round(added["percent_republican"]["value"], 1) == 38.0
+    assert round(added["percent_other"]["value"], 1) == 10.0
+    assert added["percent_democratic"]["value_display"].endswith("%")
 
 
 def test_detect_acs_layout(tmp_path):
