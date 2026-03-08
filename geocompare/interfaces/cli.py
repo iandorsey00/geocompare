@@ -221,7 +221,10 @@ class GeoCompareCLI:
         )
         scope_group = parser.add_mutually_exclusive_group()
         scope_group.add_argument("--in-state", help="group scope by state abbreviation")
-        scope_group.add_argument("--in-county", help="group scope by county key (06075:county)")
+        scope_group.add_argument(
+            "--in-county",
+            help="group scope by county (06075:county, ca:losangeles, or 'Los Angeles County, California')",
+        )
         scope_group.add_argument("--in-zcta", help="group scope by zcta (for example: 94103)")
 
     def _normalize_scope_args(self, args):

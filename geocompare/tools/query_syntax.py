@@ -1,6 +1,8 @@
 import re
 from typing import Dict, List, Optional
 
+from geocompare.tools.county_lookup import CountyLookup
+
 _VALID_OPERATOR_KEYS = {"gt", "gteq", "eq", "lteq", "lt"}
 _SYMBOL_TO_OPERATOR = {
     ">": "gt",
@@ -14,6 +16,14 @@ _SYMBOL_FILTER_RE = re.compile(r"^\s*([A-Za-z_][A-Za-z0-9_]*)\s*(>=|<=|=|>|<)\s*
 _WORD_FILTER_RE = re.compile(
     r"^\s*([A-Za-z_][A-Za-z0-9_]*)\s+(gt|gteq|eq|lteq|lt)\s+(.+?)\s*$"
 )
+_COUNTY_GEOID_RE = re.compile(r"^\d{5}:county$")
+_COUNTY_KEY_RE = re.compile(r"^[a-z]{2}:[a-z0-9]+$")
+_COUNTY_US_KEY_RE = re.compile(r"^us:[a-z]{2}:[a-z0-9]+/county$")
+
+_CT = CountyLookup()
+_COUNTY_NAME_TO_GEOID_LOWER = {
+    county_name.lower(): geoid for county_name, geoid in _CT.county_name_to_geoid.items()
+}
 
 
 def parse_geofilter(geofilter: str) -> List[Dict[str, Optional[str]]]:
@@ -88,7 +98,7 @@ def build_context(
     if in_state:
         group = in_state.lower()
     elif in_county:
-        group = in_county
+        group = _normalize_in_county(in_county)
     elif in_zcta:
         group = in_zcta
 
@@ -99,3 +109,28 @@ def build_context(
     if group:
         return group
     return ""
+
+
+def _normalize_in_county(in_county: str) -> str:
+    raw = str(in_county or "").strip()
+    lower = raw.lower()
+
+    if _COUNTY_GEOID_RE.match(lower):
+        return lower
+    if _COUNTY_KEY_RE.match(lower):
+        return lower
+    if _COUNTY_US_KEY_RE.match(lower):
+        return lower[3:-7]
+
+    geoid = _CT.county_name_to_geoid.get(raw)
+    if geoid:
+        return f"{geoid}:county"
+
+    geoid = _COUNTY_NAME_TO_GEOID_LOWER.get(lower)
+    if geoid:
+        return f"{geoid}:county"
+
+    raise ValueError(
+        "Invalid --in-county value. Use 06037:county, ca:losangeles, "
+        "or a full county name like 'Los Angeles County, California'."
+    )
