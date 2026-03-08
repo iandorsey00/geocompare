@@ -43,26 +43,18 @@ class GeoCompareCLI:
             version=f"geocompare {__version__}",
         )
 
-        build_parser = subparsers.add_parser(
-            "build",
-            aliases=["createdb", "ingest", "c"],
-            help="build data products from source files",
-        )
+        build_parser = subparsers.add_parser("build", help="build data products from source files")
         build_parser.add_argument("path", help="path to data files")
         build_parser.set_defaults(func=self.create_data_products)
 
-        query_parser = subparsers.add_parser(
-            "query", aliases=["view", "show", "q", "v"], help="query and compare geographies"
-        )
+        query_parser = subparsers.add_parser("query", help="query and compare geographies")
         query_subparsers = query_parser.add_subparsers(
             help="enter geocompare query <command> -h for details",
             dest="query_command",
             required=True,
         )
 
-        search_parser = query_subparsers.add_parser(
-            "search", aliases=["find", "lookup", "s"], help="search place names"
-        )
+        search_parser = query_subparsers.add_parser("search", help="search place names")
         search_parser.add_argument("query", help="search query")
         search_parser.add_argument("-n", type=int, default=15, help="number of results to display")
         search_parser.add_argument(
@@ -76,9 +68,7 @@ class GeoCompareCLI:
         )
         search_parser.set_defaults(func=self.display_label_search)
 
-        profile_parser = query_subparsers.add_parser(
-            "profile", aliases=["dp"], help="show one demographic profile"
-        )
+        profile_parser = query_subparsers.add_parser("profile", help="show one demographic profile")
         profile_parser.add_argument("display_label", help="the exact place name")
         profile_parser.add_argument(
             "--profile-view",
@@ -88,16 +78,14 @@ class GeoCompareCLI:
         )
         profile_parser.set_defaults(func=self.get_dp)
 
-        similar_parser = query_subparsers.add_parser(
-            "similar", aliases=["gv"], help="show nearest geovectors"
-        )
+        similar_parser = query_subparsers.add_parser("similar", help="show nearest geovectors")
         similar_parser.add_argument("display_label", help="the exact place name")
         self._add_context_args(similar_parser)
         similar_parser.add_argument("-n", type=int, default=15, help="number of rows to display")
         similar_parser.set_defaults(func=self.compare_geovectors)
 
         similar_app_parser = query_subparsers.add_parser(
-            "similar-app", aliases=["gva"], help="show nearest geovectors (appearance mode)"
+            "similar-app", help="show nearest geovectors (appearance mode)"
         )
         similar_app_parser.add_argument("display_label", help="the exact place name")
         self._add_context_args(similar_app_parser)
@@ -106,22 +94,16 @@ class GeoCompareCLI:
         )
         similar_app_parser.set_defaults(func=self.compare_geovectors_app)
 
-        top_parser = query_subparsers.add_parser(
-            "top", aliases=["hv", "highest"], help="show highest values by component"
-        )
+        top_parser = query_subparsers.add_parser("top", help="show highest values by component")
         self._add_rank_args(top_parser)
         top_parser.set_defaults(func=self.extreme_values)
 
-        bottom_parser = query_subparsers.add_parser(
-            "bottom", aliases=["lv", "lowest"], help="show lowest values by component"
-        )
+        bottom_parser = query_subparsers.add_parser("bottom", help="show lowest values by component")
         self._add_rank_args(bottom_parser)
         bottom_parser.set_defaults(func=self.lowest_values)
 
         nearest_parser = query_subparsers.add_parser(
-            "nearest",
-            aliases=["cg", "closest", "near"],
-            help="show closest geographies by distance",
+            "nearest", help="show closest geographies by distance"
         )
         nearest_parser.add_argument("display_label", help="the exact place name")
         self._add_filter_arg(nearest_parser)
@@ -129,9 +111,7 @@ class GeoCompareCLI:
         nearest_parser.add_argument("-n", type=int, default=15, help="number of rows to display")
         nearest_parser.set_defaults(func=self.closest_geographies)
 
-        dist_parser = query_subparsers.add_parser(
-            "distance", aliases=["d", "dist"], help="distance between two places"
-        )
+        dist_parser = query_subparsers.add_parser("distance", help="distance between two places")
         dist_parser.add_argument("display_label_1", help="first place")
         dist_parser.add_argument("display_label_2", help="second place")
         dist_parser.add_argument(
@@ -140,7 +120,7 @@ class GeoCompareCLI:
         dist_parser.set_defaults(func=self.distance)
 
         resolve_parser = subparsers.add_parser(
-            "resolve", aliases=["key", "id"], help="resolve a place string to canonical IDs"
+            "resolve", help="resolve a place string to canonical IDs"
         )
         resolve_parser.add_argument("query", help="input place string to resolve")
         resolve_parser.add_argument("--state", help="optional state filter, e.g. ca")
@@ -158,9 +138,7 @@ class GeoCompareCLI:
         )
         resolve_parser.set_defaults(func=self.resolve_geography)
 
-        export_parser = subparsers.add_parser(
-            "export", aliases=["tocsv", "csv", "e", "t"], help="export data as CSV"
-        )
+        export_parser = subparsers.add_parser("export", help="export data as CSV")
         export_subparsers = export_parser.add_subparsers(
             help="enter geocompare export <command> -h for details",
             dest="export_command",
@@ -179,7 +157,7 @@ class GeoCompareCLI:
         export_rows_parser.set_defaults(func=self.rows)
 
         export_profile_parser = export_subparsers.add_parser(
-            "profile", aliases=["dp"], help="export one demographic profile to CSV"
+            "profile", help="export one demographic profile to CSV"
         )
         export_profile_parser.add_argument("display_label", help="the exact place name")
         export_profile_parser.add_argument(
@@ -208,23 +186,18 @@ class GeoCompareCLI:
 
     def _add_filter_arg(self, parser):
         parser.add_argument(
-            "-f",
-            "--geofilter",
+            "-w",
             "--where",
             dest="geofilter",
-            help=(
-                "filter criteria; supports legacy 'comp:op:value' and modern "
-                "'comp>=value' formats"
-            ),
+            help="filter criteria in modern form (for example: population>=100000)",
         )
 
     def _add_context_args(self, parser):
         parser.add_argument(
-            "-c",
-            "--context",
+            "-s",
             "--scope",
             dest="context",
-            help="legacy scope string (for example: places+ca, 050+06075:county, 94103)",
+            help="scope string (for example: places+ca, 050+06075:county, 94103)",
         )
         parser.add_argument(
             "--universe",

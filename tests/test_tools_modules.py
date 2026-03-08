@@ -1,11 +1,7 @@
 from geocompare.tools.county_key_index import CountyKeyIndex
 from geocompare.tools.county_lookup import CountyLookup
-from geocompare.tools.CountyTools import CountyTools
-from geocompare.tools.KeyTools import KeyTools
 from geocompare.tools.state_lookup import StateLookup
-from geocompare.tools.StateTools import StateTools
 from geocompare.tools.summary_level_parser import SummaryLevelParser
-from geocompare.tools.SummaryLevelTools import SummaryLevelTools
 
 
 def test_state_tools_get_abbrevs_is_not_mutating():
@@ -60,10 +56,3 @@ def test_county_tools_data_loaded():
     ct = CountyLookup()
     assert ct.county_name_to_geoid["San Francisco County, California"] == "06075"
     assert ct.county_geoid_to_name["06075"] == "San Francisco County, California"
-
-
-def test_legacy_tool_aliases_still_work():
-    assert StateTools().get_abbrev("California") == "CA"
-    assert CountyTools().county_name_to_geoid["San Francisco County, California"] == "06075"
-    assert KeyTools().summary_level("us:ca:sanfrancisco/county") == "050"
-    assert SummaryLevelTools().unpack_context("places+ca") == ("160", "040", "ca")

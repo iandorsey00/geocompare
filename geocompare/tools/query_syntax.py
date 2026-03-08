@@ -36,22 +36,6 @@ def parse_geofilter(geofilter: str) -> List[Dict[str, Optional[str]]]:
 
 
 def _parse_single_filter(raw: str) -> Dict[str, Optional[str]]:
-    if ":" in raw:
-        parts = [part.strip() for part in raw.split(":")]
-        if len(parts) in (3, 4):
-            comp = parts[0]
-            operator_key = parts[1]
-            value = parts[2]
-            data_type = parts[3] if len(parts) == 4 else None
-
-            if operator_key in _VALID_OPERATOR_KEYS and data_type in (None, "c", "cc"):
-                return {
-                    "comp": comp,
-                    "operator": operator_key,
-                    "value": value,
-                    "data_type": data_type,
-                }
-
     symbol_match = _SYMBOL_FILTER_RE.match(raw)
     if symbol_match:
         comp, operator_symbol, value, data_type = symbol_match.groups()
@@ -73,8 +57,8 @@ def _parse_single_filter(raw: str) -> Dict[str, Optional[str]]:
         }
 
     raise ValueError(
-        "filter: Invalid criteria. Use 'comp:op:value' or 'comp>=value' "
-        "(operators: gt,gteq,eq,lteq,lt or >,>=,=,<=,<)."
+        "filter: Invalid criteria. Use 'comp>=value' "
+        "(operators: >,>=,=,<=,< with optional :c or :cc suffix)."
     )
 
 
@@ -88,7 +72,7 @@ def build_context(
     """Build legacy context string from explicit scope options."""
     has_explicit_scope = any([universe, in_state, in_county, in_zcta])
     if context and has_explicit_scope:
-        raise ValueError("Use either --context/--scope or explicit --universe/--in-* options.")
+        raise ValueError("Use either --scope or explicit --universe/--in-* options.")
     if context:
         return context
 

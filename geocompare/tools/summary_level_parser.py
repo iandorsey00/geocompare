@@ -37,13 +37,6 @@ class SummaryLevelParser:
     def is_summary_level_code(self, input_str: str) -> bool:
         return input_str in self.code_to_keyword
 
-    # Backward-compatible names.
-    def iskeyword(self, input_str: str) -> bool:
-        return self.is_summary_level_keyword(input_str)
-
-    def iscode(self, input_str: str) -> bool:
-        return self.is_summary_level_code(input_str)
-
     def parse_context(self, context: str) -> Tuple[Optional[str], Optional[str], Optional[str]]:
         universe_sl = None
         group_sl = None

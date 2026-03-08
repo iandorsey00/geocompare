@@ -26,7 +26,7 @@ class GeoVector:
         self.geoid = db_row['GEOID']
         self.name = db_row['NAME']
 
-        # CountyTools instance and county data
+        # County lookup instance and county data
         ct = self._ct
         self.counties = []
         self.counties_display = []

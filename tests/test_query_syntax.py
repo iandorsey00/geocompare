@@ -3,8 +3,8 @@ import pytest
 from geocompare.tools.query_syntax import build_context, parse_geofilter
 
 
-def test_parse_geofilter_supports_legacy_syntax():
-    filters = parse_geofilter("population:gteq:100000")
+def test_parse_geofilter_supports_word_operator_syntax():
+    filters = parse_geofilter("population gteq 100000")
     assert filters == [
         {"comp": "population", "operator": "gteq", "value": "100000", "data_type": None}
     ]
@@ -18,7 +18,7 @@ def test_parse_geofilter_supports_symbol_syntax():
 
 
 def test_parse_geofilter_supports_multiple_criteria():
-    filters = parse_geofilter("population>=100000,median_household_income:gt:90000")
+    filters = parse_geofilter("population>=100000,median_household_income>90000")
     assert len(filters) == 2
     assert filters[0]["operator"] == "gteq"
     assert filters[1]["operator"] == "gt"

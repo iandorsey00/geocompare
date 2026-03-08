@@ -23,7 +23,7 @@ class DemographicProfile:
         self.sumlevel = db_row['SUMLEVEL']
         # self.key = db_row['KEY']
 
-        # CountyTools instance and county data
+        # County lookup instance and county data
         ct = self._ct
         # County GEOIDs
         if self.sumlevel == '160': # Place
