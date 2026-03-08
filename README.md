@@ -84,7 +84,7 @@ For custom overlays (for example, private submodule outputs):
 Example `project_data.csv`:
 
 ```csv
-GEOID,project_social_alignment_index,project_social_alignment_confidence_pct
+GEOID,project_custom_score,project_custom_confidence_pct
 06037,63.2,91.5
 06073,58.8,88.1
 ```
@@ -93,17 +93,17 @@ Recommended metadata file (`overlay_manifest.json`) in your overlay repo:
 
 ```json
 {
-  "overlay": "social-alignment",
+  "overlay": "custom-overlay",
   "metrics": [
     {
-      "key": "project_social_alignment_index",
-      "label": "Social alignment index",
+      "key": "project_custom_score",
+      "label": "Custom score",
       "section": "PROJECT DATA",
       "type": "score"
     },
     {
-      "key": "project_social_alignment_confidence_pct",
-      "label": "Social alignment confidence",
+      "key": "project_custom_confidence_pct",
+      "label": "Custom confidence",
       "section": "PROJECT DATA",
       "type": "pct"
     }
