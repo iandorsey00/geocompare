@@ -5,6 +5,7 @@ import sys
 
 from geocompare import __version__
 from geocompare.services.query_service import QueryService
+from geocompare.tools.query_syntax import build_context
 
 
 class GeoCompareCLI:
@@ -91,7 +92,7 @@ class GeoCompareCLI:
             "similar", aliases=["gv"], help="show nearest geovectors"
         )
         similar_parser.add_argument("display_label", help="the exact place name")
-        similar_parser.add_argument("-c", "--context", help="geographies to compare with")
+        self._add_context_args(similar_parser)
         similar_parser.add_argument("-n", type=int, default=15, help="number of rows to display")
         similar_parser.set_defaults(func=self.compare_geovectors)
 
@@ -99,7 +100,7 @@ class GeoCompareCLI:
             "similar-app", aliases=["gva"], help="show nearest geovectors (appearance mode)"
         )
         similar_app_parser.add_argument("display_label", help="the exact place name")
-        similar_app_parser.add_argument("-c", "--context", help="geographies to compare with")
+        self._add_context_args(similar_app_parser)
         similar_app_parser.add_argument(
             "-n", type=int, default=15, help="number of rows to display"
         )
@@ -123,8 +124,8 @@ class GeoCompareCLI:
             help="show closest geographies by distance",
         )
         nearest_parser.add_argument("display_label", help="the exact place name")
-        nearest_parser.add_argument("-f", "--geofilter", help="filter by criteria")
-        nearest_parser.add_argument("-c", "--context", help="group of geographies to display")
+        self._add_filter_arg(nearest_parser)
+        self._add_context_args(nearest_parser)
         nearest_parser.add_argument("-n", type=int, default=15, help="number of rows to display")
         nearest_parser.set_defaults(func=self.closest_geographies)
 
@@ -170,8 +171,8 @@ class GeoCompareCLI:
             "rows", help="export multiple rows to CSV"
         )
         export_rows_parser.add_argument("comps", help="components or compounds to output")
-        export_rows_parser.add_argument("-f", "--geofilter", help="filter by criteria")
-        export_rows_parser.add_argument("-c", "--context", help="group of geographies")
+        self._add_filter_arg(export_rows_parser)
+        self._add_context_args(export_rows_parser)
         export_rows_parser.add_argument(
             "-n", type=int, default=0, help="number of rows to display (0 = all)"
         )
@@ -201,9 +202,47 @@ class GeoCompareCLI:
         parser.add_argument(
             "-d", "--data_type", choices=["c", "cc"], help="c: component; cc: compound"
         )
-        parser.add_argument("-f", "--geofilter", help="filter by criteria")
-        parser.add_argument("-c", "--context", help="group of geographies to display")
+        self._add_filter_arg(parser)
+        self._add_context_args(parser)
         parser.add_argument("-n", type=int, default=15, help="number of rows to display")
+
+    def _add_filter_arg(self, parser):
+        parser.add_argument(
+            "-f",
+            "--geofilter",
+            "--where",
+            dest="geofilter",
+            help=(
+                "filter criteria; supports legacy 'comp:op:value' and modern "
+                "'comp>=value' formats"
+            ),
+        )
+
+    def _add_context_args(self, parser):
+        parser.add_argument(
+            "-c",
+            "--context",
+            "--scope",
+            dest="context",
+            help="legacy scope string (for example: places+ca, 050+06075:county, 94103)",
+        )
+        parser.add_argument(
+            "--universe",
+            help="universe summary level (for example: places/counties/states or 160/050/040)",
+        )
+        scope_group = parser.add_mutually_exclusive_group()
+        scope_group.add_argument("--in-state", help="group scope by state abbreviation")
+        scope_group.add_argument("--in-county", help="group scope by county key (06075:county)")
+        scope_group.add_argument("--in-zcta", help="group scope by zcta (for example: 94103)")
+
+    def _normalize_scope_args(self, args):
+        args.context = build_context(
+            context=getattr(args, "context", None),
+            universe=getattr(args, "universe", None),
+            in_state=getattr(args, "in_state", None),
+            in_county=getattr(args, "in_county", None),
+            in_zcta=getattr(args, "in_zcta", None),
+        )
 
     def create_data_products(self, args):
         self.engine.create_data_products(args.path)
@@ -311,6 +350,7 @@ class GeoCompareCLI:
         print("-" * (id_width + 58))
 
     def compare_geovectors(self, args, mode="std"):
+        self._normalize_scope_args(args)
         closest_gvs = self.engine.compare_geovectors(**vars(args), mode=mode)
 
         if len(closest_gvs) == 0:
@@ -354,6 +394,7 @@ class GeoCompareCLI:
         self.compare_geovectors(args, mode="app")
 
     def extreme_values(self, args, lowest=False):
+        self._normalize_scope_args(args)
         evs = self.engine.extreme_values(**vars(args), lowest=lowest)
         if len(evs) == 0:
             self._eprint("Sorry, no geographies match your criteria.")
@@ -432,6 +473,7 @@ class GeoCompareCLI:
         self.extreme_values(args, lowest=True)
 
     def closest_geographies(self, args):
+        self._normalize_scope_args(args)
         cgs = self.engine.closest_geographies(**vars(args))
         iam = " "
 
@@ -497,6 +539,7 @@ class GeoCompareCLI:
         print(self.engine.distance(**vars(args)))
 
     def rows(self, args):
+        self._normalize_scope_args(args)
         self.engine.rows(**vars(args))
 
     def get_csv_dp(self, args):

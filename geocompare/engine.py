@@ -17,6 +17,7 @@ from geocompare.repository.sqlite_repository import SQLiteRepository
 from geocompare.tools.county_key_index import CountyKeyIndex
 from geocompare.tools.county_lookup import CountyLookup
 from geocompare.tools.numeric import parse_number
+from geocompare.tools.query_syntax import parse_geofilter
 from geocompare.tools.state_lookup import StateLookup
 from geocompare.tools.summary_level_parser import SummaryLevelParser
 
@@ -148,19 +149,15 @@ class Engine:
             return []
 
         conditions = []
-        filter_criteria = map(lambda x: x.split(":"), geofilter.split("+"))
-        for criteria in filter_criteria:
-            if len(criteria) < 3:
-                raise ValueError("filter: Invalid criteria")
-
-            data_type = criteria[3] if len(criteria) == 4 else False
-            comp = criteria[0]
+        for criteria in parse_geofilter(geofilter):
+            data_type = criteria["data_type"] or False
+            comp = criteria["comp"]
             sort_by, _ = self.get_data_types(comp, data_type, fetch_one)
             conditions.append(
                 {
                     "column": f"{sort_by}_{comp}",
-                    "operator": criteria[1],
-                    "value": parse_number(criteria[2]),
+                    "operator": criteria["operator"],
+                    "value": parse_number(criteria["value"]),
                 }
             )
 
@@ -242,25 +239,13 @@ class Engine:
                 "lt": operator.lt,
             }
 
-            # Convert pipe-delimited criteria string to a list of criteria
-            filter_criteria = geofilter.split("+")
-            # Covert list of criteria to lists of lists
-            filter_criteria = map(lambda x: x.split(":"), filter_criteria)
-
-            for filter_criterium in filter_criteria:
-                # Determine if a data_type was specified
-                if len(filter_criterium) == 4:
-                    # If so, set the data_type
-                    data_type = filter_criterium[3]
-                else:
-                    # Otherwise, set it to false
-                    data_type = False
-
-                comp = filter_criterium[0]
+            for filter_criterium in parse_geofilter(geofilter):
+                data_type = filter_criterium["data_type"] or False
+                comp = filter_criterium["comp"]
                 filter_by, print_ = self.get_data_types(comp, data_type, fetch_one)
-                operator_key = filter_criterium[1]
+                operator_key = filter_criterium["operator"]
 
-                value = parse_number(filter_criterium[2])
+                value = parse_number(filter_criterium["value"])
 
                 # Now, filter by operator at index 1.
                 compare = operators.get(operator_key)
