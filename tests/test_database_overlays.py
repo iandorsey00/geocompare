@@ -4,8 +4,9 @@ from geocompare.database.Database import Database
 
 
 class FakeDP:
-    def __init__(self, geoid, population):
+    def __init__(self, geoid, population, sumlevel="160"):
         self.geoid = geoid
+        self.sumlevel = sumlevel
         self.rc = {"population": population}
         self.added = []
 
@@ -150,6 +151,93 @@ def test_apply_overlays_deduplicates_full_geoid_matches():
 
     assert len(registered_rows) == 1
     assert len(percent_dem_rows) == 1
+
+
+def test_apply_overlays_respects_geo_level_county_vs_zcta_collision():
+    county_dp = FakeDP("0500000US01003", 200000, sumlevel="050")
+    zcta_dp = FakeDP("8600000US01003", 5000, sumlevel="860")
+
+    db = Database.__new__(Database)
+    db.demographicprofiles = [county_dp, zcta_dp]
+    db.overlays = {
+        "01003": {
+            "social_geo_level_code": 860.0,
+            "social_ai_score": 70.0,
+        }
+    }
+
+    db.apply_overlays()
+
+    county_keys = {row["key"] for row in county_dp.added}
+    zcta_keys = {row["key"] for row in zcta_dp.added}
+    assert "project_social_ai_score" not in county_keys
+    assert "project_social_ai_score" in zcta_keys
+
+
+def test_apply_overlays_respects_geo_level_place_vs_county_collision():
+    place_dp = FakeDP("1600000US01003", 12000, sumlevel="160")
+    county_dp = FakeDP("0500000US01003", 200000, sumlevel="050")
+
+    db = Database.__new__(Database)
+    db.demographicprofiles = [place_dp, county_dp]
+    db.overlays = {
+        "01003": {
+            "social_geo_level_code": 50.0,
+            "social_ai_score": 42.0,
+        }
+    }
+
+    db.apply_overlays()
+
+    place_keys = {row["key"] for row in place_dp.added}
+    county_keys = {row["key"] for row in county_dp.added}
+    assert "project_social_ai_score" not in place_keys
+    assert "project_social_ai_score" in county_keys
+
+
+def test_apply_overlays_legacy_without_geo_level_code_still_matches():
+    place_dp = FakeDP("1600000US01003", 12000, sumlevel="160")
+    county_dp = FakeDP("0500000US01003", 200000, sumlevel="050")
+
+    db = Database.__new__(Database)
+    db.demographicprofiles = [place_dp, county_dp]
+    db.overlays = {
+        "01003": {
+            "social_ai_score": 13.5,
+        }
+    }
+
+    db.apply_overlays()
+
+    place_keys = {row["key"] for row in place_dp.added}
+    county_keys = {row["key"] for row in county_dp.added}
+    assert "project_social_ai_score" in place_keys
+    assert "project_social_ai_score" in county_keys
+
+
+def test_apply_overlays_keeps_duplicate_geoid_rows_across_levels():
+    county_dp = FakeDP("0500000US01003", 200000, sumlevel="050")
+    zcta_dp = FakeDP("8600000US01003", 5000, sumlevel="860")
+
+    db = Database.__new__(Database)
+    db.demographicprofiles = [county_dp, zcta_dp]
+    db.overlays = {
+        "01003__sl050": {
+            "social_geo_level_code": 50.0,
+            "social_ai_score": 18.0,
+        },
+        "01003__sl860": {
+            "social_geo_level_code": 860.0,
+            "social_ai_score": 57.0,
+        },
+    }
+
+    db.apply_overlays()
+
+    county_score = next(row for row in county_dp.added if row["key"] == "project_social_ai_score")
+    zcta_score = next(row for row in zcta_dp.added if row["key"] == "project_social_ai_score")
+    assert county_score["value"] == 18.0
+    assert zcta_score["value"] == 57.0
 
 
 def test_detect_acs_layout(tmp_path):

@@ -79,6 +79,12 @@ class Database:
         ("republican_voters_pct", "Republican voters (%)"),
         ("other_voters_pct", "Other voters (%)"),
     ]
+    OVERLAY_GEO_LEVEL_TO_SUMLEVEL = {
+        "40": "040",
+        "50": "050",
+        "160": "160",
+        "860": "860",
+    }
     BASE_PROFILE_SECTIONS = {
         "GEOGRAPHY",
         "POPULATION",
@@ -341,7 +347,8 @@ class Database:
                 except ValueError:
                     continue
             if metric_values:
-                overlays[geoid] = metric_values
+                storage_key = self._overlay_storage_key(geoid, metric_values)
+                overlays[storage_key] = metric_values
         return overlays
 
     def _load_json_overlay(self, overlay_path):
@@ -365,8 +372,21 @@ class Database:
                 if isinstance(value, (int, float)):
                     metric_values[str(key)] = float(value)
             if metric_values:
-                overlays[geoid] = metric_values
+                storage_key = self._overlay_storage_key(geoid, metric_values)
+                overlays[storage_key] = metric_values
         return overlays
+
+    def _overlay_storage_key(self, geoid, metrics):
+        sumlevel = self._overlay_sumlevel(metrics)
+        if sumlevel:
+            return f"{geoid}__sl{sumlevel}"
+        return geoid
+
+    def _overlay_storage_geoid(self, storage_key):
+        key = str(storage_key)
+        if "__sl" in key:
+            return key.split("__sl", 1)[0]
+        return key
 
     def _load_overlays(self, path):
         merged = {}
@@ -572,6 +592,18 @@ class Database:
             return "VOTER REGISTRATION"
         return "PROJECT DATA"
 
+    def _overlay_sumlevel(self, metrics):
+        if not isinstance(metrics, dict):
+            return None
+        value = metrics.get("social_geo_level_code")
+        if value is None:
+            return None
+        try:
+            numeric = int(float(value))
+        except (TypeError, ValueError):
+            return None
+        return self.OVERLAY_GEO_LEVEL_TO_SUMLEVEL.get(str(numeric))
+
     def _overlay_row_sort_key(self, dp, row):
         _, key = row
         meta = self._overlay_meta(key)
@@ -627,10 +659,14 @@ class Database:
         matched_profiles = set()
         metrics_added = 0
 
-        for geoid, metrics in self.overlays.items():
+        for storage_key, metrics in self.overlays.items():
+            target_sumlevel = self._overlay_sumlevel(metrics)
+            geoid = self._overlay_storage_geoid(storage_key)
             matches = {}
             for key in self._normalize_geoid_keys(geoid):
                 for dp in dp_index.get(key, []):
+                    if target_sumlevel and getattr(dp, "sumlevel", None) != target_sumlevel:
+                        continue
                     matches[dp.geoid] = dp
             if not matches:
                 unmatched_geoids += 1
