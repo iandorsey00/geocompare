@@ -32,11 +32,12 @@ class GeoVector:
         self.counties_display = []
 
         if self.sumlevel == '160':
+            geoid_suffix = self.geoid.split('US', 1)[1] if 'US' in self.geoid else self.geoid[7:]
             # County GEOIDs
-            self.counties = ct.place_to_counties[self.geoid[7:]]
+            self.counties = ct.place_to_counties.get(geoid_suffix, [])
             # County names (without the state)
             self.counties_display = list(map(lambda x: ct.county_geoid_to_name[x],
-                                        ct.place_to_counties[self.geoid[7:]]))
+                                        self.counties))
             self.counties_display = list(map(lambda x: x.split(', ')[0],
                                         self.counties_display))
 

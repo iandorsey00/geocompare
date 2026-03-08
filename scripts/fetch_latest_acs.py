@@ -2,9 +2,13 @@
 """Fetch latest ACS summary files and compatible gazetteer files.
 
 This script downloads the specific raw files expected by geocompare.Database:
-- ACS lookup file
-- ACS geography files (g<year>5*.csv)
-- ACS estimate sequence files (e<year>5*<seq>000.txt) for required tables
+- Sequence-based ACS inputs:
+  - ACS lookup file
+  - ACS geography files (g<year>5*.csv)
+  - ACS estimate sequence files (e<year>5*<seq>000.txt) for required tables
+- Table-based ACS inputs (2022+):
+  - Geos<year>5YR.txt
+  - acsdt5y<year>-<table>.dat for required tables
 - Gazetteer national files for a selected year
 
 Features:
@@ -179,6 +183,8 @@ STATE_DIR_NAMES = {
 
 MANAGED_PATTERNS = [
     re.compile(r"^ACS_5yr_Seq_Table_Number_Lookup\.txt$"),
+    re.compile(r"^Geos\d{4}5YR\.txt$"),
+    re.compile(r"^acsdt5y\d{4}-[a-z0-9_]+\.dat$"),
     re.compile(r"^g\d{4}5[a-z]{2}\.csv$"),
     re.compile(r"^e\d{4}5[a-z]{2}\d{4}000\.txt$"),
     re.compile(r"^\d{4}_Gaz_(place|counties|state|cbsa|ua|zcta)_national\.txt$"),
@@ -311,15 +317,21 @@ def is_sequence_based_acs_year(year: int) -> bool:
     return any(url_exists(url) for url in candidates)
 
 
-def discover_latest_sequence_based_acs_year(start_year: int | None = None) -> str:
-    current = time.gmtime().tm_year
-    probe_start = min(start_year or current, current + 1)
-    for year in range(probe_start, 2009, -1):
-        if is_sequence_based_acs_year(year):
-            return str(year)
-    raise DownloadError(
-        "Could not find a sequence-based ACS Summary File year compatible with this pipeline."
-    )
+def is_table_based_acs_year(year: int) -> bool:
+    base = f"{ACS_ROOT}{year}/table-based-SF/"
+    candidates = [
+        urljoin(base, f"documentation/Geos{year}5YR.txt"),
+        urljoin(base, f"data/5YRData/acsdt5y{year}-b01003.dat"),
+    ]
+    return any(url_exists(url) for url in candidates)
+
+
+def detect_acs_layout_for_year(year: int) -> str | None:
+    if is_table_based_acs_year(year):
+        return "table"
+    if is_sequence_based_acs_year(year):
+        return "sequence"
+    return None
 
 
 def discover_latest_gazetteer_year() -> str:
@@ -765,6 +777,70 @@ def fetch_acs_estimate_file(
     return f"{zip_status} + extracted"
 
 
+def fetch_table_geography_file(
+    acs_year: str,
+    dest: Path,
+    *,
+    overwrite: bool,
+    resume: bool,
+    dry_run: bool,
+    timeout: int,
+    max_attempts: int,
+) -> str:
+    base = f"{ACS_ROOT}{acs_year}/table-based-SF/"
+    filename = f"Geos{acs_year}5YR.txt"
+    candidates = [
+        urljoin(base, f"documentation/{filename}"),
+        urljoin(base, filename),
+    ]
+    for url in candidates:
+        if not url_exists(url):
+            continue
+        return download_file(
+            url,
+            dest,
+            overwrite=overwrite,
+            resume=resume,
+            dry_run=dry_run,
+            timeout=timeout,
+            max_attempts=max_attempts,
+        )
+    raise DownloadError(f"Could not locate table-based geography file {filename}")
+
+
+def fetch_table_data_file(
+    acs_year: str,
+    table_id: str,
+    dest: Path,
+    *,
+    overwrite: bool,
+    resume: bool,
+    dry_run: bool,
+    timeout: int,
+    max_attempts: int,
+) -> str:
+    base = f"{ACS_ROOT}{acs_year}/table-based-SF/data/5YRData/"
+    table_slug = table_id.lower()
+    filename = f"acsdt5y{acs_year}-{table_slug}.dat"
+    candidates = [
+        urljoin(base, filename),
+        urljoin(base, filename.upper()),
+    ]
+    for url in candidates:
+        if not url_exists(url):
+            continue
+        return download_file(
+            url,
+            dest,
+            overwrite=overwrite,
+            resume=resume,
+            dry_run=dry_run,
+            timeout=timeout,
+            max_attempts=max_attempts,
+        )
+    raise DownloadError(f"Could not locate table-based ACS file for {table_id}: {filename}")
+
+
 def verify_required_files(paths: list[Path], dry_run: bool) -> None:
     if dry_run:
         log("Dry-run: verification skipped.")
@@ -943,29 +1019,17 @@ def main() -> int:
 
     try:
         lookup_dest = out_dir / "ACS_5yr_Seq_Table_Number_Lookup.txt"
+        geos_dest = out_dir / "Geos00005YR.txt"
         if args.acs_year:
             acs_start_year = int(args.acs_year)
-            if not is_sequence_based_acs_year(acs_start_year):
-                raise DownloadError(
-                    f"ACS {acs_start_year} is not sequence-based (likely table-based-SF). "
-                    "This downloader currently supports sequence-based inputs only. "
-                    "Pick a supported year (for example, 2021)."
-                )
         else:
-            latest_any = int(discover_latest_acs_year())
-            if is_sequence_based_acs_year(latest_any):
-                acs_start_year = latest_any
-            else:
-                acs_start_year = int(discover_latest_sequence_based_acs_year(latest_any))
-                log(
-                    f"Latest ACS is {latest_any} (table-based). "
-                    f"Using latest sequence-based year {acs_start_year} for compatibility."
-                )
+            acs_start_year = int(discover_latest_acs_year())
         acs_year = str(acs_start_year)
-        status = None
-        last_lookup_error = None
+        acs_layout = None
+        bootstrap_status = None
+        last_bootstrap_error = None
 
-        # If auto-discovering, step back across sequence-based vintages.
+        # If auto-discovering, step back until we find a supported layout.
         fallback_years = [acs_start_year] if args.acs_year else list(
             range(acs_start_year, 2009, -1)
         )
@@ -978,27 +1042,43 @@ def main() -> int:
         for year in fallback_years:
             try:
                 acs_year = str(year)
-                status = fetch_lookup_file(
-                    acs_year,
-                    lookup_dest,
-                    overwrite=args.overwrite,
-                    resume=not args.no_resume,
-                    dry_run=args.dry_run,
-                    timeout=args.timeout,
-                    max_attempts=args.max_attempts,
-                )
+                layout = detect_acs_layout_for_year(year)
+                if layout is None:
+                    raise DownloadError(f"No supported ACS layout found for {year}.")
+                acs_layout = layout
+                if layout == "table":
+                    geos_dest = out_dir / f"Geos{acs_year}5YR.txt"
+                    bootstrap_status = fetch_table_geography_file(
+                        acs_year,
+                        geos_dest,
+                        overwrite=args.overwrite,
+                        resume=not args.no_resume,
+                        dry_run=args.dry_run,
+                        timeout=args.timeout,
+                        max_attempts=args.max_attempts,
+                    )
+                else:
+                    bootstrap_status = fetch_lookup_file(
+                        acs_year,
+                        lookup_dest,
+                        overwrite=args.overwrite,
+                        resume=not args.no_resume,
+                        dry_run=args.dry_run,
+                        timeout=args.timeout,
+                        max_attempts=args.max_attempts,
+                    )
                 break
             except RateLimitedError:
                 raise
             except DownloadError as e:
-                last_lookup_error = e
+                last_bootstrap_error = e
                 continue
 
-        if status is None:
+        if bootstrap_status is None or acs_layout is None:
             if args.acs_year:
-                raise DownloadError(str(last_lookup_error))
+                raise DownloadError(str(last_bootstrap_error))
             raise DownloadError(
-                f"Could not locate ACS lookup for years {fallback_years}. "
+                f"Could not locate usable ACS files for years {fallback_years}. "
                 "Try --acs-year <year> explicitly."
             )
 
@@ -1014,82 +1094,122 @@ def main() -> int:
                 gaz_year = str(min(int(acs_year) + 1, time.gmtime().tm_year))
 
         log(f"ACS year: {acs_year}")
+        log(f"ACS layout: {acs_layout}")
         log(f"Gazetteer year: {gaz_year}")
         log(f"Output dir: {out_dir}")
-        log(f"States: {len(states)} entries")
-        log(f"lookup: {status}")
-
-        sequence_numbers: list[str]
-        if args.dry_run and not lookup_dest.exists():
-            # Planned run cannot parse lookup without local file.
-            sequence_numbers = ["<derived-from-lookup>"]
-            log("Dry-run note: sequence numbers will be derived after lookup download.")
+        log(f"bootstrap: {bootstrap_status}")
+        if acs_layout == "sequence":
+            log(f"States: {len(states)} entries")
         else:
-            sequence_numbers = parse_lookup_sequence_numbers(lookup_dest, REQUIRED_TABLE_IDS)
-            log(f"sequence files needed: {len(sequence_numbers)}")
+            log(
+                "States filter ignored for table-based ACS "
+                "(national files include all geographies)."
+            )
 
+        sequence_numbers: list[str] = []
         planned_geo: list[tuple[str, Path]] = []
         planned_est: list[tuple[str, str, Path]] = []
+        planned_tables: list[tuple[str, Path]] = []
 
-        for state in states:
-            filename = f"g{acs_year}5{state}.csv"
-            planned_geo.append((state, out_dir / filename))
+        if acs_layout == "sequence":
+            if args.dry_run and not lookup_dest.exists():
+                # Planned run cannot parse lookup without local file.
+                sequence_numbers = ["<derived-from-lookup>"]
+                log("Dry-run note: sequence numbers will be derived after lookup download.")
+            else:
+                sequence_numbers = parse_lookup_sequence_numbers(lookup_dest, REQUIRED_TABLE_IDS)
+                log(f"sequence files needed: {len(sequence_numbers)}")
 
-        for state in states:
-            for seq in sequence_numbers:
-                if seq.startswith("<"):
-                    continue
-                filename = f"e{acs_year}5{state}{seq}000.txt"
-                planned_est.append((state, seq, out_dir / filename))
+            for state in states:
+                filename = f"g{acs_year}5{state}.csv"
+                planned_geo.append((state, out_dir / filename))
+
+            for state in states:
+                for seq in sequence_numbers:
+                    if seq.startswith("<"):
+                        continue
+                    filename = f"e{acs_year}5{state}{seq}000.txt"
+                    planned_est.append((state, seq, out_dir / filename))
+        else:
+            for table_id in sorted(REQUIRED_TABLE_IDS):
+                filename = f"acsdt5y{acs_year}-{table_id.lower()}.dat"
+                planned_tables.append((table_id, out_dir / filename))
+            log(f"table files needed: {len(planned_tables)}")
 
         gaz_targets = [template.format(year=gaz_year) for template in GAZ_FILES]
 
-        log(f"files planned: {len(planned_geo) + len(planned_est) + len(gaz_targets) + 1}")  # +1 lookup
+        bootstrap_count = 1
+        log(
+            "files planned: "
+            f"{len(planned_geo) + len(planned_est) + len(planned_tables) + len(gaz_targets) + bootstrap_count}"
+        )
 
         failures = 0
-        required_paths = [lookup_dest]
-        for state, dest in planned_geo:
-            try:
-                result = fetch_acs_geography_file(
-                    acs_year,
-                    state,
-                    dest,
-                    overwrite=args.overwrite,
-                    resume=not args.no_resume,
-                    dry_run=args.dry_run,
-                    timeout=args.timeout,
-                    max_attempts=args.max_attempts,
-                )
-                if result != "exists":
-                    log(f"{dest.name}: {result}")
-                required_paths.append(dest)
-            except RateLimitedError:
-                raise
-            except DownloadError as e:
-                failures += 1
-                log(f"ERROR: {e}")
+        required_paths = [lookup_dest] if acs_layout == "sequence" else [geos_dest]
+        if acs_layout == "sequence":
+            for state, dest in planned_geo:
+                try:
+                    result = fetch_acs_geography_file(
+                        acs_year,
+                        state,
+                        dest,
+                        overwrite=args.overwrite,
+                        resume=not args.no_resume,
+                        dry_run=args.dry_run,
+                        timeout=args.timeout,
+                        max_attempts=args.max_attempts,
+                    )
+                    if result != "exists":
+                        log(f"{dest.name}: {result}")
+                    required_paths.append(dest)
+                except RateLimitedError:
+                    raise
+                except DownloadError as e:
+                    failures += 1
+                    log(f"ERROR: {e}")
 
-        for state, seq, dest in planned_est:
-            try:
-                result = fetch_acs_estimate_file(
-                    acs_year,
-                    state,
-                    seq,
-                    dest,
-                    overwrite=args.overwrite,
-                    resume=not args.no_resume,
-                    dry_run=args.dry_run,
-                    timeout=args.timeout,
-                    max_attempts=args.max_attempts,
-                )
-                if result != "exists":
-                    log(f"{dest.name}: {result}")
-                required_paths.append(dest)
-            except RateLimitedError:
-                raise
-            except DownloadError as e:
-                failures += 1
-                log(f"ERROR: {e}")
+            for state, seq, dest in planned_est:
+                try:
+                    result = fetch_acs_estimate_file(
+                        acs_year,
+                        state,
+                        seq,
+                        dest,
+                        overwrite=args.overwrite,
+                        resume=not args.no_resume,
+                        dry_run=args.dry_run,
+                        timeout=args.timeout,
+                        max_attempts=args.max_attempts,
+                    )
+                    if result != "exists":
+                        log(f"{dest.name}: {result}")
+                    required_paths.append(dest)
+                except RateLimitedError:
+                    raise
+                except DownloadError as e:
+                    failures += 1
+                    log(f"ERROR: {e}")
+        else:
+            for table_id, dest in planned_tables:
+                try:
+                    result = fetch_table_data_file(
+                        acs_year,
+                        table_id,
+                        dest,
+                        overwrite=args.overwrite,
+                        resume=not args.no_resume,
+                        dry_run=args.dry_run,
+                        timeout=args.timeout,
+                        max_attempts=args.max_attempts,
+                    )
+                    if result != "exists":
+                        log(f"{dest.name}: {result}")
+                    required_paths.append(dest)
+                except RateLimitedError:
+                    raise
+                except DownloadError as e:
+                    failures += 1
+                    log(f"ERROR: {e}")
 
         for txt_name in gaz_targets:
             dest = out_dir / txt_name

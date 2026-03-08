@@ -27,10 +27,11 @@ class DemographicProfile:
         ct = self._ct
         # County GEOIDs
         if self.sumlevel == '160': # Place
-            self.counties = ct.place_to_counties[self.geoid[7:]]
+            geoid_suffix = self.geoid.split('US', 1)[1] if 'US' in self.geoid else self.geoid[7:]
+            self.counties = ct.place_to_counties.get(geoid_suffix, [])
             # County names (without the state)
             self.counties_display = list(map(lambda x: ct.county_geoid_to_name[x],
-                                    ct.place_to_counties[self.geoid[7:]]))
+                                    self.counties))
             self.counties_display = list(map(lambda x: x.split(', ')[0],
                                     self.counties_display))
         else:

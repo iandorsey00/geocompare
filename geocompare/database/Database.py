@@ -83,8 +83,11 @@ class Database:
 
     def get_gh_columns(self, gh_year, path):
         '''Obtain columns for the geoheaders table.'''
-        return list(pd.read_csv(path / f'{gh_year}_Gaz_place_national.txt',
-            sep='\t', nrows=1, dtype='str').columns)
+        place_path = path / f'{gh_year}_Gaz_place_national.txt'
+        with open(place_path, 'rt', newline='') as f:
+            header_line = f.readline()
+        delimiter = '|' if '|' in header_line else '\t'
+        return list(pd.read_csv(place_path, sep=delimiter, nrows=1, dtype='str').columns)
 
     def get_state_gazetteer_path(self, gh_year, path):
         '''Resolve the state gazetteer file path with backward compatibility.'''
@@ -281,6 +284,13 @@ class Database:
                 merged.setdefault(geoid, {}).update(metrics)
 
         return merged
+
+    def _read_gaz_rows(self, file_path):
+        with open(file_path, 'rt', newline='') as f:
+            header_line = f.readline()
+            f.seek(0)
+            delimiter = '|' if '|' in header_line else '\t'
+            return list(csv.reader(f, delimiter=delimiter))
 
     def _add_overlay_metric(self, dp, section_title, metric_key, metric_value):
         raw_key = metric_key.lower().strip()
@@ -861,72 +871,114 @@ class Database:
 
         # Get rows for places (160) from CSV
         this_path = self.data_dir / f'{self.gh_year}_Gaz_place_national.txt'
-        rows = []
-
-        with open(this_path, 'rt') as f:
-            rows = list(csv.reader(f, delimiter='\t'))
+        rows = self._read_gaz_rows(this_path)
 
         # Get rows for counties (050) from CSV
         this_path = self.data_dir / f'{self.gh_year}_Gaz_counties_national.txt'
-
-        with open(this_path, 'rt') as f:
-            c_rows = list(csv.reader(f, delimiter='\t'))
+        c_rows = self._read_gaz_rows(this_path)
 
         # County geoheaders lack two columns that places have, so insert
         # them as empty strings.
-        for idx, c_row in enumerate(c_rows):
-            c_row.insert(4, '')
-            c_row.insert(5, '')
+        for c_row in c_rows:
+            if len(c_row) >= 11:
+                # USPS,GEOID,GEOIDFQ,ANSICODE,NAME,ALAND,... -> add LSAD,FUNCSTAT
+                c_row.insert(5, '')
+                c_row.insert(6, '')
         
         # Get rows for states (040) from CSV
         this_path = self.get_state_gazetteer_path(self.gh_year, self.data_dir)
-
-        with open(this_path, 'rt') as f:
-            s_rows = list(csv.reader(f, delimiter='\t'))
+        s_rows = self._read_gaz_rows(this_path)
 
         # Get rows for Metro/micro areas (310) from CSV
         this_path = self.data_dir / f'{self.gh_year}_Gaz_cbsa_national.txt'
-
-        with open(this_path, 'rt') as f:
-            cbsa_rows = list(csv.reader(f, delimiter='\t'))
+        cbsa_rows = self._read_gaz_rows(this_path)
 
         # Get rows for urban areas (400) from CSV
         this_path = self.data_dir / f'{self.gh_year}_Gaz_ua_national.txt'
+        ua_rows = self._read_gaz_rows(this_path)
 
-        with open(this_path, 'rt') as f:
-            ua_rows = list(csv.reader(f, delimiter='\t'))
+        # Normalize state rows to match place schema:
+        # USPS,GEOID,GEOIDFQ,NAME,ALAND,... -> insert ANSICODE, LSAD, FUNCSTAT
+        for s_row in s_rows:
+            if len(s_row) >= 10:
+                s_row.insert(3, '')
+                s_row.insert(5, '')
+                s_row.insert(6, '')
 
-        # UA insert blank columns so that the number of columns match.
+        # Normalize urban area rows to match place schema:
+        # GEOID,GEOIDFQ,NAME,ALAND,... -> add USPS, ANSICODE, LSAD, FUNCSTAT
         for ua_row in ua_rows:
-            ua_row.insert(0, 'US') # The state abbrev for all UAs in geos tbl
-            ua_row.insert(2, '')
-            ua_row.insert(5, '')
+            if len(ua_row) >= 9:
+                normalized = [
+                    'US',
+                    ua_row[0],
+                    ua_row[1],
+                    '',
+                    ua_row[2],
+                    '',
+                    '',
+                    ua_row[3],
+                    ua_row[4],
+                    ua_row[5],
+                    ua_row[6],
+                    ua_row[7],
+                    ua_row[8],
+                ]
+                ua_row[:] = normalized
 
         # Get rows for ZCTAs (860) from CSV
         this_path = self.data_dir / f'{self.gh_year}_Gaz_zcta_national.txt'
+        z_rows = self._read_gaz_rows(this_path)
 
-        with open(this_path, 'rt') as f:
-            z_rows = list(csv.reader(f, delimiter='\t'))
-
-        # ZCTA insert blank columns so that the number of columns match.
+        # Normalize ZCTA rows to match place schema:
+        # GEOID,GEOIDFQ,ALAND,... -> add USPS, ANSICODE, NAME, LSAD, FUNCSTAT
         for z_row in z_rows:
-            z_row.insert(0, 'US') # The state abbrev for all ZCTAs in geos tbl
-            z_row.insert(2, '')
-            z_row.insert(3, '')
-            z_row.insert(4, '')
-            z_row.insert(5, '')
+            if len(z_row) >= 8:
+                geoid = z_row[0]
+                normalized = [
+                    'US',
+                    geoid,
+                    z_row[1],
+                    '',
+                    f'ZCTA5 {geoid}' if geoid != 'GEOID' else 'NAME',
+                    '',
+                    '',
+                    z_row[2],
+                    z_row[3],
+                    z_row[4],
+                    z_row[5],
+                    z_row[6],
+                    z_row[7],
+                ]
+                z_row[:] = normalized
 
-        # Metro/micro area insert blank columns so that the number of columns
-        # match.
+        # Normalize metro/micro rows to match place schema:
+        # CSAFP,GEOID,GEOIDFQ,NAME,CBSA_TYPE,ALAND,... -> keep only shared shape.
         for cbsa_row in cbsa_rows:
-            del(cbsa_row[0])
-            cbsa_row.insert(0, 'US') # The state abb. for all metro/micro areas
-            cbsa_row.insert(2, '')
-            cbsa_row.insert(5, '')
+            if len(cbsa_row) >= 11:
+                normalized = [
+                    'US',
+                    cbsa_row[1],
+                    cbsa_row[2],
+                    '',
+                    cbsa_row[3],
+                    '',
+                    '',
+                    cbsa_row[5],
+                    cbsa_row[6],
+                    cbsa_row[7],
+                    cbsa_row[8],
+                    cbsa_row[9],
+                    cbsa_row[10],
+                ]
+                cbsa_row[:] = normalized
 
         def complete_geoids(sumlev_code, rows):
             for row in rows:
-                row[1] = sumlev_code + '00US' + row[1]
+                if len(row) > 2 and 'US' in row[2]:
+                    row[1] = row[2]
+                else:
+                    row[1] = sumlev_code + '00US' + row[1]
 
         # Complete GEOIDs
 
