@@ -28,13 +28,13 @@ jobs:
           python -m pip install -e ".[dev]"
 
       - name: Lint
-        run: ruff check tests geodata/identity geodata/repository/sqlite_repository.py geodata/interfaces/cli.py scripts/benchmark_queries.py
+        run: ruff check tests geocompare/identity geocompare/repository/sqlite_repository.py geocompare/interfaces/cli.py scripts/benchmark_queries.py
 
       - name: Format check
-        run: black --check tests geodata/identity geodata/repository/sqlite_repository.py geodata/interfaces/cli.py scripts/benchmark_queries.py
+        run: black --check tests geocompare/identity geocompare/repository/sqlite_repository.py geocompare/interfaces/cli.py scripts/benchmark_queries.py
 
       - name: Type check
-        run: mypy geodata/identity geodata/repository/sqlite_repository.py geodata/interfaces/cli.py
+        run: mypy geocompare/identity geocompare/repository/sqlite_repository.py geocompare/interfaces/cli.py
 
       - name: Test
         run: pytest -q

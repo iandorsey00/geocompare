@@ -82,10 +82,16 @@ def safe_divide(
     left = parse_number(dividend, default=default)
     right = parse_float(divisor, default=default)
 
-    if isinstance(left, float) and math.isnan(left):
+    try:
+        left_num = float(left)
+        right_num = float(right)
+    except (TypeError, ValueError):
         return np.nan
-    if isinstance(right, float) and math.isnan(right):
+
+    if math.isnan(left_num):
         return np.nan
-    if right == 0.0:
+    if math.isnan(right_num):
+        return np.nan
+    if right_num == 0.0:
         return divide_by_zero
-    return left / right
+    return left_num / right_num
