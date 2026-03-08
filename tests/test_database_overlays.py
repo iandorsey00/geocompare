@@ -34,6 +34,15 @@ def test_detect_latest_acs_year_from_txt(tmp_path):
     assert db.detect_latest_acs_year(data_dir) == "2024"
 
 
+def test_detect_latest_acs_year_from_table_based_geos(tmp_path):
+    data_dir = Path(tmp_path)
+    (data_dir / "Geos20235YR.txt").touch()
+    (data_dir / "Geos20245YR.txt").touch()
+
+    db = Database.__new__(Database)
+    assert db.detect_latest_acs_year(data_dir) == "2024"
+
+
 def test_apply_overlays_adds_crime_and_project_metrics():
     dp = FakeDP("16000US0601000", 1000)
 
@@ -58,3 +67,12 @@ def test_apply_overlays_adds_crime_and_project_metrics():
 
     project_metric = next(row for row in dp.added if row["key"] == "project_social_alignment_index")
     assert project_metric["section_title"] == "PROJECT DATA"
+
+
+def test_detect_acs_layout(tmp_path):
+    data_dir = Path(tmp_path)
+    (data_dir / "Geos20245YR.txt").touch()
+    (data_dir / "g20245us.csv").touch()
+
+    db = Database.__new__(Database)
+    assert db.detect_acs_layout(data_dir, "2024") == "table"

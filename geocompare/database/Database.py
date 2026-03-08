@@ -108,6 +108,10 @@ class Database:
 
     def detect_latest_acs_year(self, path):
         years = []
+        for candidate in path.glob('Geos*5YR.txt'):
+            match = re.match(r'^Geos(\d{4})5YR\.txt$', candidate.name)
+            if match:
+                years.append(int(match.group(1)))
         for pattern, regex in (
             ('g*5us.csv', r'^g(\d{4})5us\.csv$'),
             ('g*5us.txt', r'^g(\d{4})5us\.txt$'),
@@ -118,9 +122,38 @@ class Database:
                     years.append(int(match.group(1)))
         if not years:
             raise FileNotFoundError(
-                'Unable to detect ACS year. Expected g<YEAR>5us.csv or g<YEAR>5us.txt.'
+                'Unable to detect ACS year. Expected Geos<YEAR>5YR.txt, '
+                'g<YEAR>5us.csv, or g<YEAR>5us.txt.'
             )
         return str(max(years))
+
+    def detect_acs_layout(self, path, year):
+        if (path / f'Geos{year}5YR.txt').exists():
+            return 'table'
+        for candidate in (
+            path / f'g{year}5us.csv',
+            path / f'g{year}5us.txt',
+        ):
+            if candidate.exists():
+                return 'sequence'
+        raise FileNotFoundError(
+            f'Unable to detect ACS layout for {year}. '
+            f'Expected Geos{year}5YR.txt or g{year}5us.csv/txt.'
+        )
+
+    def resolve_table_geography_path(self, year):
+        candidate = self.data_dir / f'Geos{year}5YR.txt'
+        if candidate.exists():
+            return candidate
+        raise FileNotFoundError(f'Missing table-based geography file: {candidate.name}')
+
+    def resolve_table_data_path(self, year, table_id):
+        candidate = self.data_dir / f'acsdt5y{year}-{table_id.lower()}.dat'
+        if candidate.exists():
+            return candidate
+        raise FileNotFoundError(
+            f'Missing table-based ACS data file for {table_id}: {candidate.name}'
+        )
 
     def resolve_geo_file_path(self, year, state):
         candidates = [
@@ -371,6 +404,25 @@ class Database:
         '''Get normalized geography rows from ACS geography source files.'''
         rows = []
 
+        if getattr(self, 'acs_layout', 'sequence') == 'table':
+            table_geo_path = self.resolve_table_geography_path(self.year)
+            with open(table_geo_path, 'rt', newline='') as f:
+                reader = csv.DictReader(f, delimiter='|')
+                for row in reader:
+                    geoid = (row.get('GEO_ID') or '').strip()
+                    if not geoid:
+                        continue
+                    rows.append(
+                        [
+                            (row.get('STUSAB') or 'US').strip().lower(),
+                            (row.get('SUMLEVEL') or '').strip(),
+                            geoid,
+                            geoid,
+                            (row.get('NAME') or '').strip(),
+                        ]
+                    )
+            return rows
+
         def parse_geo_txt_line(line):
             if not line:
                 return None
@@ -424,6 +476,275 @@ class Database:
         add_rows_from_file(this_path)
 
         return rows
+
+    def _table_data_column_candidates(self, table_id, line_number):
+        normalized = str(int(line_number)).zfill(3)
+        compact = str(int(line_number))
+        return [
+            f'{table_id}_E{normalized}',
+            f'{table_id}_E{compact}',
+            f'{table_id}_{normalized}E',
+            f'{table_id}_{compact}E',
+        ]
+
+    def _load_table_based_data(self):
+        self.data_identifiers = {}
+        self.data_identifiers_list = ['STATE', 'LOGRECNO']
+
+        for table_id, line_numbers in self.line_numbers_dict.items():
+            self.data_identifiers[table_id] = ['STATE', 'LOGRECNO']
+            for line_number in line_numbers:
+                this_data_identifier = table_id + '_' + line_number
+                self.data_identifiers[table_id].append(this_data_identifier)
+                self.data_identifiers_list.append(this_data_identifier)
+
+        columns = self.data_identifiers_list
+        self.data_columns = columns
+        column_defs = list(map(lambda x: x + ' TEXT', columns))
+        column_defs.append('PRIMARY KEY(STATE, LOGRECNO)')
+
+        this_table_name = 'data'
+        self.c.execute('''CREATE TABLE %s
+                          (%s)''' % (this_table_name, ', '.join(column_defs)))
+
+        geographies = self.c.execute(
+            'SELECT STUSAB, LOGRECNO, GEOID FROM geographies'
+        ).fetchall()
+        geoid_to_key = {
+            row[2]: (row[0], row[1])
+            for row in geographies
+            if row[2]
+        }
+
+        rows_by_key = {}
+        for table_id, line_numbers in self.line_numbers_dict.items():
+            this_path = self.resolve_table_data_path(self.year, table_id)
+            with open(this_path, 'rt', newline='') as f:
+                reader = csv.DictReader(f, delimiter='|')
+                if reader.fieldnames is None:
+                    continue
+                field_map = {name.upper(): name for name in reader.fieldnames}
+                for row in reader:
+                    geoid = (row.get(field_map.get('GEO_ID', 'GEO_ID')) or '').strip()
+                    if not geoid:
+                        continue
+                    key = geoid_to_key.get(geoid)
+                    if key is None:
+                        continue
+                    state, logrecno = key
+                    record = rows_by_key.setdefault(
+                        key,
+                        {
+                            'STATE': state,
+                            'LOGRECNO': logrecno,
+                        },
+                    )
+                    for line_number in line_numbers:
+                        target = f'{table_id}_{line_number}'
+                        value = ''
+                        for candidate in self._table_data_column_candidates(table_id, line_number):
+                            source_col = field_map.get(candidate.upper())
+                            if source_col is None:
+                                continue
+                            value = (row.get(source_col) or '').strip()
+                            break
+                        record[target] = value
+
+        if rows_by_key:
+            insert_rows = []
+            for record in rows_by_key.values():
+                insert_rows.append([record.get(column, '') for column in columns])
+            self.c.executemany(
+                'INSERT INTO data(%s) VALUES (%s)' % (
+                    ', '.join(columns),
+                    self.dbapi_qm_substr(len(columns)),
+                ),
+                insert_rows,
+            )
+
+    def _load_sequence_based_data(self):
+        # Get needed table metadata.
+        self.table_metadata = []
+
+        for table_id, line_numbers in self.line_numbers_dict.items():
+            self.table_metadata += self.c.execute('''SELECT * FROM table_metadata
+                WHERE table_id = ? AND (line_number IN (%s) OR line_number = '')''' % (
+                self.dbapi_qm_substr(len(line_numbers)) ),
+                [table_id] + line_numbers)
+
+        self.debug_output_list('table_metadata')
+
+        # Obtain needed sequence numbers                                  #####
+        self.sequence_numbers = dict()
+
+        for table_metadata_row in self.table_metadata:
+            table_id = table_metadata_row[2]
+            sequence_number = table_metadata_row[3]
+
+            # Create the key for the table_id if it doesn't exist.
+            if table_id not in self.sequence_numbers.keys():
+                self.sequence_numbers[table_id] = []
+
+            self.sequence_numbers[table_id].append(sequence_number)
+
+        # Remove duplicate sequence numbers
+        for key, value in self.sequence_numbers.items():
+            self.sequence_numbers[key] = list(dict.fromkeys(value))
+
+        self.debug_output_dict('sequence_numbers')
+
+        # Obtain needed files                                             #####
+        self.files = dict()
+
+        for table_id, sequence_numbers in self.sequence_numbers.items():
+            if table_id not in self.files.keys():
+                self.files[table_id] = []
+
+            for sequence_number in sequence_numbers:
+                for state in self.st.get_abbrevs(lowercase=True, inc_us=True):
+                    this_path = self.data_dir / f'e{self.year}5{state}{sequence_number}000.txt'
+                    self.files[table_id].append(this_path)
+
+        self.debug_output_dict('files')
+
+        # Obtain needed positions                                         #####
+        self.positions = dict()
+        last_start_position = ''
+        last_line_number = ''
+
+        for table_metadata_row in self.table_metadata:
+            table_id = table_metadata_row[2]
+            start_position = table_metadata_row[5]
+            line_number = table_metadata_row[4]
+
+            # If the table_id hasn't been added to the keys yet, set the key
+            # to a list containing 5 (the position for LOGRECNO).
+            if table_id not in self.positions.keys():
+                self.positions[table_id] = [2, 5]
+
+            # Once we hit our start_position, get it and subtract one since
+            # they start at one, not zero.
+            if start_position:
+                last_start_position = int(start_position) - 1
+
+            # If we hit a line number and it's a line number we need, get it,
+            # add it to the start_position, then subtract one again since
+            # line numbers also start at zero.
+            elif line_number in self.line_numbers_dict[table_id]:
+                last_line_number = int(line_number)
+                self.positions[table_id].append(last_start_position\
+                     + last_line_number - 1)
+
+        self.debug_output_dict('positions')
+
+        # Obtain needed data_identifiers                                  #####
+        self.data_identifiers = dict()
+        self.data_identifiers_list = ['STATE', 'LOGRECNO']
+
+        for table_id, line_numbers in self.line_numbers_dict.items():
+            # If there is no such key, start with 'LOGRECNO'
+            if table_id not in self.data_identifiers.keys():
+                self.data_identifiers[table_id] = \
+                    ['STATE', 'LOGRECNO']
+
+            # Add the data_identifiers.
+            # Format: <table_id>_<line_number>
+            for line_number in line_numbers:
+                this_data_identifier = table_id + '_' + line_number
+                self.data_identifiers[table_id].append(this_data_identifier)
+                self.data_identifiers_list.append(this_data_identifier)
+
+        self.debug_output_dict('data_identifiers')
+        self.debug_output_list('data_identifiers_list')
+
+        # data ################################################################
+        this_table_name = 'data'
+
+        columns = self.data_identifiers_list
+        self.data_columns = columns
+        column_defs = list(map(lambda x: x + ' TEXT', columns))
+        column_defs.append('PRIMARY KEY(STATE, LOGRECNO)')
+
+        # CREATE TABLE statement
+        self.c.execute('''CREATE TABLE %s
+                          (%s)''' % (this_table_name, ', '.join(column_defs)))
+
+        # Map indices (idx) to elements from list
+        def idx_map(idxs, list):
+            ld = dict(enumerate(list))
+            return [ld[i] for i in idxs]
+
+        # Assist with changing the order of the elements around for the
+        # INSERT statement below.
+        def flip_els(rows):
+            return list(
+                map(
+                    lambda x: x[2:] + x[:2], rows
+                    )
+                )
+
+        # Record whether or not we're on the first statement of the function
+        # below.
+        first_table_id = True
+
+        # Iterate through table_ids
+        total_tables = len(self.line_numbers_dict)
+        for table_index, (table_id, line_numbers) in enumerate(self.line_numbers_dict.items(), start=1):
+            columns = self.data_identifiers[table_id]
+            rows = []
+
+            # Iterate through files
+            files_for_table = self.files[table_id]
+            total_files = len(files_for_table)
+            for file_index, file in enumerate(files_for_table, start=1):
+                # Read from each CSV file
+                with open(file, 'rt') as f:
+                    csv_rows = csv.reader(f)
+
+                    for csv_row in csv_rows:
+                        # Get elements at self.positions[table_id] for each row
+                        rows.append(idx_map(self.positions[table_id], csv_row))
+                if file_index == 1 or file_index % 20 == 0 or file_index == total_files:
+                    self._progress(
+                        f"Reading {table_id} sequence files",
+                        current=file_index,
+                        total=total_files,
+                    )
+
+            if first_table_id:
+                question_mark_substr = self.dbapi_qm_substr(len(columns))
+                # Insert rows into table
+                self.c.executemany('INSERT INTO %s(%s) VALUES (%s)' % (
+                    this_table_name, ', '.join(columns),
+                    question_mark_substr), rows)
+
+                first_table_id = False
+            else:
+                set_clause = list(
+                    map(
+                        lambda x: x + ' = ?',
+                        self.data_identifiers[table_id][2:]
+                        )
+                    )
+                self.c.executemany('''UPDATE %s SET %s
+                    WHERE STATE = ? AND LOGRECNO = ?''' % (
+                    this_table_name, ', '.join(set_clause)), flip_els(rows))
+
+            # Print the count for debug purposes. Should be around ~200,000
+            for debug in self.c.execute('SELECT COUNT(*) FROM data'):
+                display_data_identifier = table_id
+                logger.info(
+                    'Processing for %s complete (%s rows).',
+                    display_data_identifier,
+                    debug[0],
+                )
+            self._progress(
+                f"Loaded ACS table {table_id}",
+                current=table_index,
+                total=total_tables,
+            )
+        # Debug output
+        self.debug_output_table(this_table_name)
     
     ###########################################################################
     # __init__
@@ -436,8 +757,12 @@ class Database:
         self.data_dir = Path(path).expanduser().resolve()
         self._progress(f"Build start: {self.data_dir}")
         self.year = self.detect_latest_acs_year(self.data_dir)
+        self.acs_layout = self.detect_acs_layout(self.data_dir, self.year)
         self.gh_year = self.detect_latest_gazetteer_year(self.data_dir)
-        self._progress(f"Detected ACS year {self.year}; gazetteer year {self.gh_year}")
+        self._progress(
+            f"Detected ACS year {self.year} ({self.acs_layout}); "
+            f"gazetteer year {self.gh_year}"
+        )
         self.overlays = self._load_overlays(self.data_dir)
 
         self.st = StateTools()
@@ -448,25 +773,26 @@ class Database:
 
         # table_metadata ######################################################
         this_table_name = 'table_metadata'
-        self._progress("Loading table metadata")
+        if self.acs_layout == 'sequence':
+            self._progress("Loading table metadata")
 
-        # Process column definitions
-        columns = self.get_tm_columns(self.data_dir)
-        column_defs = list(map(lambda x: x + ' TEXT', columns))
-        column_defs.insert(0, 'id INTEGER PRIMARY KEY')
+            # Process column definitions
+            columns = self.get_tm_columns(self.data_dir)
+            column_defs = list(map(lambda x: x + ' TEXT', columns))
+            column_defs.insert(0, 'id INTEGER PRIMARY KEY')
 
-        # Get rows from CSV
-        this_path = self.data_dir / 'ACS_5yr_Seq_Table_Number_Lookup.txt'
-        rows = []
+            # Get rows from CSV
+            this_path = self.data_dir / 'ACS_5yr_Seq_Table_Number_Lookup.txt'
+            rows = []
 
-        with open(this_path, 'rt') as f:
-            rows = list(csv.reader(f))
+            with open(this_path, 'rt') as f:
+                rows = list(csv.reader(f))
 
-        # Create table
-        self.create_table(this_table_name, columns, column_defs, rows)
+            # Create table
+            self.create_table(this_table_name, columns, column_defs, rows)
 
-        # Debug output
-        self.debug_output_table(this_table_name)
+            # Debug output
+            self.debug_output_table(this_table_name)
 
         # geographies #########################################################
         this_table_name = 'geographies'
@@ -512,10 +838,6 @@ class Database:
             ]
             for row in rows
         ]
-
-        # DBAPI question mark substring
-        columns_len = len(column_defs)
-        question_mark_substr = ', '.join(['?'] * columns_len)
 
         # Create table
         self.create_table(this_table_name, columns, column_defs, rows)
@@ -632,192 +954,13 @@ class Database:
         # Specify table_ids and line numbers that have the data we need.
         # These table line references have remained stable across recent ACS releases.
         self.line_numbers_dict = self.LINE_NUMBERS_DICT
-
-        # Get needed table metadata.
-        self.table_metadata = []
-
-        for table_id, line_numbers in self.line_numbers_dict.items():
-            self.table_metadata += self.c.execute('''SELECT * FROM table_metadata
-                WHERE table_id = ? AND (line_number IN (%s) OR line_number = '')''' % (
-                self.dbapi_qm_substr(len(line_numbers)) ),
-                [table_id] + line_numbers)
-
-        self.debug_output_list('table_metadata')
-
-        # Obtain needed sequence numbers                                  #####
-        self.sequence_numbers = dict()
-
-        for table_metadata_row in self.table_metadata:
-            table_id = table_metadata_row[2]
-            sequence_number = table_metadata_row[3]
-
-            # Create the key for the table_id if it doesn't exist.
-            if table_id not in self.sequence_numbers.keys():
-                self.sequence_numbers[table_id] = []
-
-            self.sequence_numbers[table_id].append(sequence_number)
-
-        # Remove duplicate sequence numbers
-        for key, value in self.sequence_numbers.items():
-            self.sequence_numbers[key] = list(dict.fromkeys(value))
-
-        self.debug_output_dict('sequence_numbers')
-
-        # Obtain needed files                                             #####
-        self.files = dict()
-
-        for table_id, sequence_numbers in self.sequence_numbers.items():
-            if table_id not in self.files.keys():
-                self.files[table_id] = []
-
-            for sequence_number in sequence_numbers:
-                for state in self.st.get_abbrevs(lowercase=True, inc_us=True):
-                    this_path = self.data_dir / f'e{self.year}5{state}{sequence_number}000.txt'
-                    self.files[table_id].append(this_path)
-        
-        self.debug_output_dict('files')
-
-        # Obtain needed positions                                         #####
-        self.positions = dict()
-        last_start_position = ''
-        last_line_number = ''
-
-        for table_metadata_row in self.table_metadata:
-            table_id = table_metadata_row[2]
-            start_position = table_metadata_row[5]
-            line_number = table_metadata_row[4]
-
-            # If the table_id hasn't been added to the keys yet, set the key
-            # to a list containing 5 (the position for LOGRECNO).
-            if table_id not in self.positions.keys():
-                self.positions[table_id] = [2, 5]
-
-            # Once we hit our start_position, get it and subtract one since
-            # they start at one, not zero.
-            if start_position:
-                last_start_position = int(start_position) - 1
-
-            # If we hit a line number and it's a line number we need, get it,
-            # add it to the start_position, then subtract one again since
-            # line numbers also start at zero.
-            elif line_number in self.line_numbers_dict[table_id]:
-                last_line_number = int(line_number)
-                self.positions[table_id].append(last_start_position\
-                     + last_line_number - 1)
-        
-        self.debug_output_dict('positions')
-
-        # Obtain needed data_identifiers                                  #####
-        self.data_identifiers = dict()
-        self.data_identifiers_list = ['STATE', 'LOGRECNO']
-
-        for table_id, line_numbers in self.line_numbers_dict.items():
-            # If there is no such key, start with 'LOGRECNO'
-            if table_id not in self.data_identifiers.keys():
-                self.data_identifiers[table_id] = \
-                    ['STATE', 'LOGRECNO']
-
-            # Add the data_identifiers.
-            # Format: <table_id>_<line_number>
-            for line_number in line_numbers:
-                this_data_identifier = table_id + '_' + line_number
-                self.data_identifiers[table_id].append(this_data_identifier)
-                self.data_identifiers_list.append(this_data_identifier)
-
-        self.debug_output_dict('data_identifiers')
-        self.debug_output_list('data_identifiers_list')
-
-        # data ################################################################
-        this_table_name = 'data'
-
         logger.info('Processing data table. This might take a while.')
-        self._progress("Loading ACS estimate sequences")
-
-        columns = self.data_identifiers_list
-        self.data_columns = columns
-        column_defs = list(map(lambda x: x + ' TEXT', columns))
-        column_defs.append('PRIMARY KEY(STATE, LOGRECNO)')
-
-        # CREATE TABLE statement
-        self.c.execute('''CREATE TABLE %s
-                          (%s)''' % (this_table_name, ', '.join(column_defs)))
-
-        # Map indices (idx) to elements from list
-        def idx_map(idxs, list):
-            ld = dict(enumerate(list))
-            return [ld[i] for i in idxs]
-
-        # Assist with changing the order of the elements around for the
-        # INSERT statement below.
-        def flip_els(rows):
-            return list(
-                map(
-                    lambda x: x[2:] + x[:2], rows
-                    )
-                )
-
-        # Record whether or not we're on the first statement of the function
-        # below.
-        first_table_id = True
-
-        # Iterate through table_ids
-        total_tables = len(self.line_numbers_dict)
-        for table_index, (table_id, line_numbers) in enumerate(self.line_numbers_dict.items(), start=1):
-            columns = self.data_identifiers[table_id]
-            rows = []
-
-            # Iterate through files
-            files_for_table = self.files[table_id]
-            total_files = len(files_for_table)
-            for file_index, file in enumerate(files_for_table, start=1):
-                # Read from each CSV file
-                with open(file, 'rt') as f:
-                    csv_rows = csv.reader(f)
-
-                    for csv_row in csv_rows:
-                        # Get elements at self.positions[table_id] for each row
-                        rows.append(idx_map(self.positions[table_id], csv_row))
-                if file_index == 1 or file_index % 20 == 0 or file_index == total_files:
-                    self._progress(
-                        f"Reading {table_id} sequence files",
-                        current=file_index,
-                        total=total_files,
-                    )
-
-            if first_table_id:
-                question_mark_substr = self.dbapi_qm_substr(len(columns))
-                # Insert rows into table
-                self.c.executemany('INSERT INTO %s(%s) VALUES (%s)' % (
-                    this_table_name, ', '.join(columns),
-                    question_mark_substr), rows)
-
-                first_table_id = False
-            else:
-                set_clause = list(
-                    map(
-                        lambda x: x + ' = ?',
-                        self.data_identifiers[table_id][2:]
-                        )
-                    )
-                self.c.executemany('''UPDATE %s SET %s
-                    WHERE STATE = ? AND LOGRECNO = ?''' % (
-                    this_table_name, ', '.join(set_clause)), flip_els(rows))
-
-            # Print the count for debug purposes. Should be around ~200,000
-            for debug in self.c.execute('SELECT COUNT(*) FROM data'):
-                display_data_identifier = table_id
-                logger.info(
-                    'Processing for %s complete (%s rows).',
-                    display_data_identifier,
-                    debug[0],
-                )
-            self._progress(
-                f"Loaded ACS table {table_id}",
-                current=table_index,
-                total=total_tables,
-            )
-        # Debug output
-        self.debug_output_table(this_table_name)
+        if self.acs_layout == 'table':
+            self._progress("Loading ACS table-based files")
+            self._load_table_based_data()
+        else:
+            self._progress("Loading ACS estimate sequences")
+            self._load_sequence_based_data()
 
         # geocompare_data ######################################################
         this_table_name = 'geocompare_data'
@@ -852,10 +995,6 @@ class Database:
         # Column definitions
         column_defs = list(map(lambda x: x + ' TEXT', columns))
         column_defs.insert(0, 'id INTEGER PRIMARY KEY')
-
-        # DBAPI question mark substring
-        columns_len = len(column_defs)
-        question_mark_substr = self.dbapi_qm_substr(columns_len)
 
         # CREATE TABLE statement
         self.c.execute('''CREATE TABLE %s
