@@ -358,7 +358,8 @@ class GeoCompareCLI:
         metric_width = max([30, len("Metric")] + [len(label) for label in metric_labels])
 
         county_headers = [
-            ", ".join(dp.counties_display) if getattr(dp, "counties_display", None) else "" for dp in dps
+            ", ".join(dp.counties_display) if getattr(dp, "counties_display", None) else ""
+            for dp in dps
         ]
         per_geo_component_widths = []
         per_geo_compound_widths = []
@@ -398,17 +399,13 @@ class GeoCompareCLI:
             " "
             + self._fit("Metric", metric_width, truncate=False)
             + " "
-            + " ".join(
-                self._fit(dp.name, col_widths[idx]) for idx, dp in enumerate(dps)
-            )
+            + " ".join(self._fit(dp.name, col_widths[idx]) for idx, dp in enumerate(dps))
         )
         print(
             " "
             + self._fit("", metric_width, truncate=False)
             + " "
-            + " ".join(
-                self._fit(county_headers[idx], col_widths[idx]) for idx in range(len(dps))
-            )
+            + " ".join(self._fit(county_headers[idx], col_widths[idx]) for idx in range(len(dps)))
         )
         print("-" * divider_width)
 
@@ -437,10 +434,7 @@ class GeoCompareCLI:
                 for idx, dp in enumerate(dps)
             ]
             print(
-                " "
-                + self._fit(metric_label, metric_width, truncate=False)
-                + " "
-                + " ".join(values)
+                " " + self._fit(metric_label, metric_width, truncate=False) + " " + " ".join(values)
             )
 
         print("-" * divider_width)
