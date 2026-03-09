@@ -1,3 +1,4 @@
+import copy
 import csv
 import difflib
 import heapq
@@ -43,6 +44,7 @@ class Engine:
         self._gv_by_name = {}
         self._data_identifier_index = {}
         self.identity_index = None
+        self._us_dp_cache = None
 
     def create_data_products(self, data_path):
         """Generate and save data products."""
@@ -107,6 +109,201 @@ class Engine:
         self._gv_by_name = {gv.name: gv for gv in geovectors}
         self._data_identifier_index = self._build_data_identifier_index(demographicprofiles)
         self.identity_index = PlaceIdentityIndex.from_demographic_profiles(demographicprofiles)
+        self._us_dp_cache = None
+
+    def _weighted_mean(self, values, weights):
+        total_weight = sum(weights)
+        if total_weight <= 0:
+            return float(sum(values)) / float(len(values)) if values else 0.0
+        return sum(v * w for v, w in zip(values, weights)) / total_weight
+
+    def _format_profile_component(self, key, value):
+        if key == "land_area":
+            return f"{value:,.1f} sqmi"
+        if key in {
+            "per_capita_income",
+            "median_household_income",
+            "median_value",
+            "median_rent",
+        }:
+            if key == "median_household_income" and int(round(value)) == 250001:
+                return "$250,000+"
+            return "$" + f"{int(round(value)):,}"
+        if key == "median_year_structure_built":
+            return str(int(round(value)))
+        if key in {"median_age", "average_household_size"}:
+            return f"{value:,.1f}"
+        if float(value).is_integer():
+            return f"{int(round(value)):,}"
+        return f"{value:,.3f}"
+
+    def _recompute_compounds(self, dp):
+        rc = dp.rc
+        c = {}
+
+        population = rc.get("population", 0) or 0
+        land_area = rc.get("land_area", 0) or 0
+        if land_area:
+            c["population_density"] = population / land_area
+        else:
+            c["population_density"] = 0.0
+
+        if population:
+            for key in [
+                "white_alone",
+                "black_alone",
+                "asian_alone",
+                "other_race",
+                "hispanic_or_latino",
+                "white_alone_not_hispanic_or_latino",
+                "italian_alone",
+                "under_18",
+                "population_18_to_64",
+                "age_65_plus",
+            ]:
+                if key in rc:
+                    c[key] = rc[key] / population * 100.0
+            for key, value in rc.items():
+                if key.endswith("_count"):
+                    c[key] = value / population * 100000.0
+        else:
+            for key in [
+                "white_alone",
+                "black_alone",
+                "asian_alone",
+                "other_race",
+                "hispanic_or_latino",
+                "white_alone_not_hispanic_or_latino",
+                "italian_alone",
+                "under_18",
+                "population_18_to_64",
+                "age_65_plus",
+            ]:
+                if key in rc:
+                    c[key] = 0.0
+
+        pop_25 = rc.get("population_25_years_and_older", 0) or 0
+        if pop_25 and population:
+            c["population_25_years_and_older"] = pop_25 / population * 100.0
+            if "bachelors_degree_or_higher" in rc:
+                c["bachelors_degree_or_higher"] = rc["bachelors_degree_or_higher"] / pop_25 * 100.0
+            if "graduate_degree_or_higher" in rc:
+                c["graduate_degree_or_higher"] = rc["graduate_degree_or_higher"] / pop_25 * 100.0
+        else:
+            if "population_25_years_and_older" in rc:
+                c["population_25_years_and_older"] = 0.0
+            if "bachelors_degree_or_higher" in rc:
+                c["bachelors_degree_or_higher"] = 0.0
+            if "graduate_degree_or_higher" in rc:
+                c["graduate_degree_or_higher"] = 0.0
+
+        poverty_universe = rc.get("poverty_universe", 0) or 0
+        if poverty_universe and "population_below_poverty_level" in rc:
+            c["population_below_poverty_level"] = (
+                rc["population_below_poverty_level"] / poverty_universe * 100.0
+            )
+        elif "population_below_poverty_level" in rc:
+            c["population_below_poverty_level"] = 0.0
+
+        labor_force = rc.get("labor_force", 0) or 0
+        if labor_force and "unemployed_population" in rc:
+            c["unemployed_population"] = rc["unemployed_population"] / labor_force * 100.0
+        elif "unemployed_population" in rc:
+            c["unemployed_population"] = 0.0
+
+        occupied = rc.get("occupied_housing_units", 0) or 0
+        if occupied and "homeowner_occupied_housing_units" in rc:
+            c["homeowner_occupied_housing_units"] = (
+                rc["homeowner_occupied_housing_units"] / occupied * 100.0
+            )
+        elif "homeowner_occupied_housing_units" in rc:
+            c["homeowner_occupied_housing_units"] = 0.0
+
+        registered = rc.get("registered_voters", 0) or 0
+        if population and "registered_voters" in rc:
+            c["registered_voters"] = rc["registered_voters"] / population * 100.0
+        if registered:
+            for key in ("democratic_voters", "republican_voters", "other_voters"):
+                if key in rc:
+                    c[key] = rc[key] / registered * 100.0
+
+        dp.c = c
+        fcd = {}
+        for key, value in c.items():
+            if key == "population_density":
+                fcd[key] = f"{value:,.1f}/sqmi"
+            elif key.endswith("_count"):
+                fcd[key] = f"{value:,.1f}/100k"
+            else:
+                fcd[key] = f"{value:,.1f}%"
+        dp.fcd = fcd
+
+    def _build_united_states_profile(self):
+        if self._us_dp_cache is not None:
+            return self._us_dp_cache
+
+        d = self.get_data_products()
+        states = [dp for dp in d["demographicprofiles"] if dp.sumlevel == "040"]
+        if not states:
+            raise ValueError("No state-level profiles available to synthesize United States.")
+
+        us_dp = copy.deepcopy(states[0])
+        us_dp.name = "United States"
+        us_dp.state = "US"
+        us_dp.sumlevel = "040"
+        us_dp.geoid = "04000US00"
+        us_dp.counties = []
+        us_dp.counties_display = []
+
+        population_weights = [float(dp.rc.get("population", 0) or 0) for dp in states]
+        household_weights = [float(dp.rc.get("households", 0) or 0) for dp in states]
+        housing_weights = [float(dp.rc.get("occupied_housing_units", 0) or 0) for dp in states]
+
+        weighted_by_population = {
+            "median_age",
+            "per_capita_income",
+            "latitude",
+            "longitude",
+            "social_ai_score",
+            "social_acs_score",
+            "social_overlap_coverage_pct",
+        }
+        weighted_by_households = {"median_household_income", "average_household_size"}
+        weighted_by_housing = {
+            "median_year_structure_built",
+            "median_rooms",
+            "median_value",
+            "median_rent",
+        }
+
+        keys = sorted({key for dp in states for key in dp.rc.keys()})
+        aggregated = {}
+        for key in keys:
+            values = [float(dp.rc.get(key, 0) or 0) for dp in states]
+            if key == "land_area":
+                aggregated[key] = sum(values)
+            elif key in weighted_by_population or key.endswith("_score") or key.endswith("_pct"):
+                aggregated[key] = self._weighted_mean(values, population_weights)
+            elif key in weighted_by_households:
+                aggregated[key] = self._weighted_mean(values, household_weights)
+            elif key in weighted_by_housing:
+                aggregated[key] = self._weighted_mean(values, housing_weights)
+            else:
+                aggregated[key] = sum(values)
+
+        if "population" in aggregated and "under_18" in aggregated and "age_65_plus" in aggregated:
+            aggregated["population_18_to_64"] = (
+                aggregated["population"] - aggregated["under_18"] - aggregated["age_65_plus"]
+            )
+
+        us_dp.rc = aggregated
+        us_dp.fc = {
+            key: self._format_profile_component(key, value) for key, value in us_dp.rc.items()
+        }
+        self._recompute_compounds(us_dp)
+
+        self._us_dp_cache = us_dp
+        return us_dp
 
     def _build_data_identifier_index(self, demographicprofiles):
         index = {}
@@ -160,9 +357,12 @@ class Engine:
 
     def _lookup_dp(self, display_label):
         dp = self._dp_by_name.get(display_label)
-        if dp is None:
-            raise ValueError(f"No geography found for display label: {display_label}")
-        return dp
+        if dp is not None:
+            return dp
+        normalized = str(display_label or "").strip().lower()
+        if normalized in {"united states", "united states of america", "us", "u.s."}:
+            return self._build_united_states_profile()
+        raise ValueError(f"No geography found for display label: {display_label}")
 
     def resolve_geography(self, query, state=None, sumlevel=None, population=None, n=5, **kwargs):
         """Resolve an input geography string to likely canonical matches."""
@@ -380,7 +580,9 @@ class Engine:
 
         return [self._lookup_dp(display_label)]
 
-    def extreme_values(self, data_identifier, context="", geofilter="", n=10, lowest=False, **kwargs):
+    def extreme_values(
+        self, data_identifier, context="", geofilter="", n=10, lowest=False, **kwargs
+    ):
         """Get highest and lowest values."""
         d = self.get_data_products()
 

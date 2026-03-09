@@ -9,6 +9,9 @@ class SummaryLevelParser:
 
     def __init__(self):
         self.keyword_to_code = {
+            "nations": "010",
+            "nation": "010",
+            "n": "010",
             "states": "040",
             "s": "040",
             "counties": "050",
@@ -23,6 +26,7 @@ class SummaryLevelParser:
             "z": "860",
         }
         self.code_to_keyword = {
+            "010": "nations",
             "050": "counties",
             "040": "states",
             "160": "places",

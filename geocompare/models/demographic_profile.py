@@ -126,7 +126,7 @@ class DemographicProfile:
         self.ind['median_household_income'] = 0
         self.ind['population_below_poverty_level'] = 0
         self.ind['labor_force'] = 0
-        self.ind['unemployed_population'] = 2
+        self.ind['unemployed_population'] = 0
         self.ind['households'] = 0
 
         # Housing category
@@ -178,9 +178,9 @@ class DemographicProfile:
                 ('std', 'population_below_poverty_level'),
                 ('std', 'labor_force'),
                 ('std', 'unemployed_population'),
-                ('nc', 'households'),
             ]),
             ('HOUSING', [
+                ('nc', 'households'),
                 ('nc', 'average_household_size'),
                 ('nc', 'occupied_housing_units'),
                 ('std', 'homeowner_occupied_housing_units'),

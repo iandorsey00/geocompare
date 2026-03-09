@@ -1191,6 +1191,7 @@ class Database:
         rows = self.get_geo_csv_rows()
 
         # Filter for summary levels
+        # 010 = United States
         # 040 = State
         # 050 = State-County
         # 160 = State-Place
@@ -1200,7 +1201,7 @@ class Database:
         rows = [
             row
             for row in rows
-            if row[1] in {"160", "050", "040", "860", "310", "400"}
+            if row[1] in {"010", "160", "050", "040", "860", "310", "400"}
             and len(row[3]) >= 5
             and row[3][3:5] == "00"
         ]
@@ -1356,6 +1357,57 @@ class Database:
         complete_geoids("310", cbsa_rows)
         complete_geoids("400", ua_rows)
         complete_geoids("860", z_rows)
+
+        # Add a national geoheader row (010) so the ACS national geography row
+        # can join through to geocompare_data.
+        state_rows_for_agg = [
+            row for row in s_rows if len(row) >= 13 and row[4] not in {"NAME", "United States"}
+        ]
+        if state_rows_for_agg:
+            total_aland = 0.0
+            total_awater = 0.0
+            total_aland_sqmi = 0.0
+            total_awater_sqmi = 0.0
+            lat_weighted_sum = 0.0
+            lon_weighted_sum = 0.0
+
+            for row in state_rows_for_agg:
+                try:
+                    aland = float(row[7])
+                    awater = float(row[8])
+                    aland_sqmi = float(row[9])
+                    awater_sqmi = float(row[10])
+                    lat = float(row[11])
+                    lon = float(row[12])
+                except (TypeError, ValueError):
+                    continue
+
+                total_aland += aland
+                total_awater += awater
+                total_aland_sqmi += aland_sqmi
+                total_awater_sqmi += awater_sqmi
+                lat_weighted_sum += lat * aland
+                lon_weighted_sum += lon * aland
+
+            us_lat = lat_weighted_sum / total_aland if total_aland else 0.0
+            us_lon = lon_weighted_sum / total_aland if total_aland else 0.0
+            us_geoid = "0100000US"
+            us_row = [
+                "US",
+                us_geoid,
+                us_geoid,
+                "",
+                "United States",
+                "",
+                "",
+                f"{total_aland:.0f}",
+                f"{total_awater:.0f}",
+                f"{total_aland_sqmi:.1f}",
+                f"{total_awater_sqmi:.1f}",
+                f"{us_lat:.6f}",
+                f"{us_lon:.6f}",
+            ]
+            rows.append(us_row)
 
         # Merge rows together
         rows = rows + c_rows + s_rows + z_rows + ua_rows + cbsa_rows

@@ -546,7 +546,9 @@ class GeoCompareCLI:
             return "-" * (68 if key == "population" else 89)
 
         def ev_print_headers(comp, universe_sl, group_sl, group):
-            if universe_sl == "040":
+            if universe_sl == "010":
+                universe = "Nation"
+            elif universe_sl == "040":
                 universe = "State"
             elif universe_sl == "050":
                 universe = "County"
@@ -622,7 +624,9 @@ class GeoCompareCLI:
             return "-" * 68
 
         def cg_print_headers(universe_sl, group_sl, group):
-            if universe_sl == "040":
+            if universe_sl == "010":
+                universe = "Nation"
+            elif universe_sl == "040":
                 universe = "State"
             elif universe_sl == "050":
                 universe = "County"
