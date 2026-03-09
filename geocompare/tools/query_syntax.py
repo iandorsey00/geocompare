@@ -102,10 +102,12 @@ def build_context(
     elif in_zcta:
         group = in_zcta
 
-    if universe and group:
-        return f"{universe}+{group}"
-    if universe:
-        return f"{universe}+"
+    normalized_universe = universe.lower() if universe else None
+
+    if normalized_universe and group:
+        return f"{normalized_universe}+{group}"
+    if normalized_universe:
+        return f"{normalized_universe}+"
     if group:
         return group
     return ""

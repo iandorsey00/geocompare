@@ -36,7 +36,7 @@ class SummaryLevelParser:
         }
 
     def is_summary_level_keyword(self, input_str: str) -> bool:
-        return input_str in self.keyword_to_code
+        return input_str.lower() in self.keyword_to_code
 
     def is_summary_level_code(self, input_str: str) -> bool:
         return input_str in self.code_to_keyword
@@ -48,6 +48,7 @@ class SummaryLevelParser:
         if context:
             if "+" in context:
                 universe_sl, group = context.split("+", 1)
+                universe_sl = universe_sl.lower()
                 if self.is_summary_level_keyword(universe_sl):
                     universe_sl = self.keyword_to_code[universe_sl]
                 elif not self.is_summary_level_code(universe_sl):

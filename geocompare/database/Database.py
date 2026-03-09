@@ -1198,13 +1198,22 @@ class Database:
         # 310 = Metro/Micro Area
         # 400 = Urban Area
         # 860 = ZCTA
-        rows = [
-            row
-            for row in rows
-            if row[1] in {"010", "160", "050", "040", "860", "310", "400"}
-            and len(row[3]) >= 5
-            and row[3][3:5] == "00"
-        ]
+        allowed_sumlevels = {"010", "160", "050", "040", "860", "310", "400"}
+
+        def _keep_geography_row(row):
+            sumlevel = row[1]
+            geoid = row[3]
+            if sumlevel not in allowed_sumlevels or len(geoid) < 5:
+                return False
+
+            # Table-based ACS uses non-"00" GEOID middle codes for some
+            # summary levels (notably ZCTA = 860Z200USxxxxx).
+            if self.acs_layout == "table":
+                return "US" in geoid
+
+            return geoid[3:5] == "00"
+
+        rows = [row for row in rows if _keep_geography_row(row)]
         rows = [
             [
                 row[0],  # STUSAB [lowercase]
