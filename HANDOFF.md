@@ -4,7 +4,7 @@
 - Project: `geocompare`
 - Handoff date: 2026-03-08
 - Branch: `master`
-- Version: `0.6.9`
+- Version: `0.6.11`
 
 ## Project Scope
 GeoCompare builds and queries local demographic data products from ACS/Gazetteer
