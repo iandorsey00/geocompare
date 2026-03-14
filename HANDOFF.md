@@ -4,11 +4,15 @@
 - Project: `geocompare`
 - Handoff date: 2026-03-08
 - Branch: `master`
-- Version: `0.6.11`
+- Version: `0.6.12`
 
 ## Project Scope
 GeoCompare builds and queries local demographic data products from ACS/Gazetteer
 inputs and optional overlays.
+
+Project documentation now lives in-repo under `doc/`. The standalone
+`geocompare.wiki` repo can be treated as deprecated once the migrated docs are
+committed and pushed.
 
 Core/base overlays:
 - Crime overlay (`CRIME`)
