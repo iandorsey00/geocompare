@@ -70,8 +70,17 @@ python3 scripts/fetch_overlays.py \
   --voter-source /path/or/url/to/voter.csv
 ```
 
+`scripts/fetch_overlays.py` merges normalized rows into the existing canonical
+overlay file when present, so state-by-state voter imports can be accumulated
+incrementally instead of overwriting prior states.
+
 Crime metrics appear under `CRIME`, voter metrics under `VOTER REGISTRATION`,
 and custom metrics in `project_data.csv` appear under `PROJECT DATA`.
+
+Voter overlays may be partial. If a source only publishes total registered
+voters, GeoCompare will still import `registered_voters` without requiring
+party-breakout columns. This is useful for states like Texas, where current
+official statewide data is available but party registration is not.
 
 ### Custom Overlay Conventions
 

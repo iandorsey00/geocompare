@@ -10,8 +10,10 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import re
 import sys
 import urllib.request
+from html import unescape
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional
 
@@ -19,6 +21,8 @@ CANONICAL_FILES = {
     "crime": "crime_data.csv",
     "voter": "voter_data.csv",
 }
+
+TX_STATE_GEOID = "0400000US48"
 
 
 def _read_text_from_source(source: str) -> str:
@@ -33,6 +37,11 @@ def _normalize_key(value: str) -> str:
 
 
 def _parse_records(source: str) -> List[Dict[str, str]]:
+    if _is_texas_voter_history_source(source):
+        return _parse_texas_voter_history(source)
+    if _is_texas_voter_press_release_source(source):
+        return _parse_texas_voter_press_release(source)
+
     text = _read_text_from_source(source)
     stripped = text.lstrip()
     if stripped.startswith("[") or stripped.startswith("{"):
@@ -54,6 +63,109 @@ def _parse_records(source: str) -> List[Dict[str, str]]:
     return rows
 
 
+def _is_texas_voter_history_source(source: str) -> bool:
+    lowered = source.lower()
+    return "sos.state.tx.us/elections/historical/" in lowered and lowered.endswith(".shtml")
+
+
+def _is_texas_voter_press_release_source(source: str) -> bool:
+    lowered = source.lower()
+    return "sos.state.tx.us/about/newsreleases/" in lowered and lowered.endswith(".shtml")
+
+
+def _normalize_name_token(value: str) -> str:
+    return "".join(ch for ch in value.lower() if ch.isalnum())
+
+
+def _texas_county_geoid_lookup() -> Dict[str, str]:
+    repo_root = Path(__file__).resolve().parents[1]
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+    from geocompare.tools.data.county_name_to_geoid import county_name_to_geoid
+
+    lookup: Dict[str, str] = {}
+    for county_name, geoid in county_name_to_geoid.items():
+        if not county_name.endswith(", Texas"):
+            continue
+        county_part = county_name.split(" County, Texas", 1)[0]
+        lookup[_normalize_name_token(county_part)] = geoid
+    return lookup
+
+
+def _parse_texas_voter_history(source: str) -> List[Dict[str, str]]:
+    text = _read_text_from_source(source)
+    plain = unescape(re.sub(r"<[^>]+>", "\n", text))
+    county_lookup = _texas_county_geoid_lookup()
+    county_rows: List[Dict[str, str]] = []
+    statewide_total: Optional[float] = None
+
+    line_re = re.compile(r"^([A-Z .'-]+?)\s+([\d,]+)\s+([\d,]+)\s+([\d,]+)\s+([\d,]+)\s*$")
+
+    for raw_line in plain.splitlines():
+        line = " ".join(raw_line.split()).strip()
+        if not line:
+            continue
+        match = line_re.match(line)
+        if not match:
+            continue
+
+        county_name, _precincts, registered, _suspense, _non_suspense = match.groups()
+        if county_name == "STATEWIDE TOTAL":
+            statewide_total = _as_float(registered)
+            continue
+
+        geoid = county_lookup.get(_normalize_name_token(county_name))
+        if not geoid:
+            continue
+
+        registered_value = _as_float(registered)
+        if registered_value is None:
+            continue
+
+        county_rows.append(
+            {
+                "GEOID": geoid,
+                "registered_voters": registered_value,
+            }
+        )
+
+    if statewide_total is not None:
+        county_rows.append(
+            {
+                "GEOID": TX_STATE_GEOID,
+                "registered_voters": statewide_total,
+            }
+        )
+
+    if not county_rows:
+        raise ValueError(
+            "Texas historical source did not expose parseable county rows. "
+            "Current SOS historical county pages appear stale; use the official "
+            "statewide press release URL for current Texas totals."
+        )
+
+    return county_rows
+
+
+def _parse_texas_voter_press_release(source: str) -> List[Dict[str, str]]:
+    text = _read_text_from_source(source)
+    plain = unescape(re.sub(r"<[^>]+>", " ", text))
+    match = re.search(r"Texas has ([\d,]+) registered voters", plain, re.IGNORECASE)
+    if not match:
+        raise ValueError("Texas press release did not contain a statewide registered voter total.")
+
+    registered_value = _as_float(match.group(1))
+    if registered_value is None:
+        raise ValueError("Texas press release registered voter total could not be parsed.")
+
+    return [
+        {
+            "GEOID": TX_STATE_GEOID,
+            "registered_voters": registered_value,
+        }
+    ]
+
+
 def _find_col(record: Dict[str, str], aliases: Iterable[str]) -> Optional[str]:
     key_map = {_normalize_key(k): k for k in record.keys()}
     for alias in aliases:
@@ -62,8 +174,11 @@ def _find_col(record: Dict[str, str], aliases: Iterable[str]) -> Optional[str]:
     return None
 
 
-def _as_float(value: str) -> Optional[float]:
-    text = value.strip()
+def _as_float(value: object) -> Optional[float]:
+    if isinstance(value, (int, float)):
+        return float(value)
+
+    text = str(value).strip()
     if not text:
         return None
     text = text.replace(",", "")
@@ -145,6 +260,39 @@ def _write_csv(path: Path, rows: List[Dict[str, object]], fieldnames: List[str])
             writer.writerow(row)
 
 
+def _merge_existing_rows(
+    path: Path,
+    rows: List[Dict[str, object]],
+    fieldnames: List[str],
+) -> List[Dict[str, object]]:
+    merged: Dict[str, Dict[str, object]] = {}
+
+    if path.exists():
+        with path.open("r", newline="", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                geoid = (row.get("GEOID") or "").strip()
+                if not geoid:
+                    continue
+                merged[geoid] = {key: row.get(key, "") for key in fieldnames}
+                merged[geoid]["GEOID"] = geoid
+
+    for row in rows:
+        geoid = str(row.get("GEOID", "")).strip()
+        if not geoid:
+            continue
+        existing = merged.setdefault(geoid, {"GEOID": geoid})
+        for key in fieldnames:
+            if key == "GEOID":
+                continue
+            value = row.get(key)
+            if value in (None, ""):
+                continue
+            existing[key] = value
+
+    return [merged[geoid] for geoid in sorted(merged)]
+
+
 def _run_one(kind: str, source: str, out_dir: Path) -> None:
     rows = _parse_records(source)
     if kind == "crime":
@@ -162,8 +310,9 @@ def _run_one(kind: str, source: str, out_dir: Path) -> None:
     else:
         raise ValueError(f"unsupported overlay kind: {kind}")
     destination = out_dir / "overlays" / CANONICAL_FILES[kind]
-    _write_csv(destination, normalized, fieldnames)
-    print(f"{kind}: wrote {len(normalized)} rows -> {destination}")
+    merged = _merge_existing_rows(destination, normalized, fieldnames)
+    _write_csv(destination, merged, fieldnames)
+    print(f"{kind}: wrote {len(normalized)} rows, merged total {len(merged)} -> {destination}")
 
 
 def main() -> int:

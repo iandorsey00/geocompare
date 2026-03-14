@@ -23,6 +23,11 @@ Optional/custom overlays:
   - `python3 -m geocompare.interfaces.cli build <data_path>`
 - Base inputs are discovered from files under `<data_path>`.
 - Overlay inputs are discovered under `<data_path>/overlays`.
+- `scripts/fetch_overlays.py` merges onto existing canonical overlay CSVs, so
+  voter/crime data can be imported incrementally across multiple runs.
+- Built-in voter overlays may be partial:
+  - `registered_voters` alone is valid.
+  - Party breakout columns are optional when a source does not publish them.
 - Optional manifest support:
   - `overlay_manifest.json` (or `manifest.json`) in overlays directory.
   - Supports per-metric metadata (`key`, `label`, `section`, `type`, `order`).
