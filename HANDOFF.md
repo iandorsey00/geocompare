@@ -2,7 +2,7 @@
 
 ## Snapshot
 - Project: `geocompare`
-- Handoff date: 2026-03-08
+- Handoff date: 2026-03-14
 - Branch: `master`
 - Version: `0.6.12`
 
