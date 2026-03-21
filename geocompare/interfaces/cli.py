@@ -151,16 +151,73 @@ class GeoCompareCLI:
             default="below",
             help="which side of the threshold counts as the qualifying destination",
         )
+        remoteness_parser.add_argument(
+            "--county-population-min",
+            type=int,
+            help="only include geographies whose containing county has at least this many residents",
+        )
+        remoteness_parser.add_argument(
+            "--county-density-min",
+            type=float,
+            help="only include geographies whose containing county has at least this population density",
+        )
+        remoteness_parser.add_argument(
+            "--one-per-county",
+            action="store_true",
+            help="keep only the top-ranked geography from each county",
+        )
         self._add_filter_arg(remoteness_parser)
         self._add_context_args(remoteness_parser)
         remoteness_parser.add_argument(
             "-k", "--kilometers", action="store_true", help="display distance in kilometers"
         )
         remoteness_parser.add_argument(
+            "--show-area",
+            action="store_true",
+            help="include land area in square miles",
+        )
+        remoteness_parser.add_argument(
             "-n", type=int, default=15, help="number of rows to display"
         )
         self._add_label_arg(remoteness_parser)
         remoteness_parser.set_defaults(func=self.remoteness)
+
+        local_average_parser = query_subparsers.add_parser(
+            "local-average",
+            help="rank geographies by the distance-weighted local average of a metric",
+        )
+        local_average_parser.add_argument("data_identifier", help="metric used for the local average")
+        local_average_parser.add_argument(
+            "--neighbors",
+            type=int,
+            default=20,
+            help="number of nearest geographies to include in the local average",
+        )
+        local_average_parser.add_argument(
+            "--county-population-min",
+            type=int,
+            help="only include geographies whose containing county has at least this many residents",
+        )
+        local_average_parser.add_argument(
+            "--county-density-min",
+            type=float,
+            help="only include geographies whose containing county has at least this population density",
+        )
+        local_average_parser.add_argument(
+            "--one-per-county",
+            action="store_true",
+            help="keep only the top-ranked geography from each county",
+        )
+        self._add_filter_arg(local_average_parser)
+        self._add_context_args(local_average_parser)
+        local_average_parser.add_argument(
+            "-k", "--kilometers", action="store_true", help="display neighborhood span in kilometers"
+        )
+        local_average_parser.add_argument(
+            "-n", type=int, default=15, help="number of rows to display"
+        )
+        self._add_label_arg(local_average_parser)
+        local_average_parser.set_defaults(func=self.local_average)
 
         dist_parser = query_subparsers.add_parser("distance", help="distance between two geographies")
         dist_parser.add_argument("display_label_1", help="first geography")
@@ -290,6 +347,12 @@ class GeoCompareCLI:
             return text[:width]
         return text.ljust(width)
 
+    def _fit_right(self, value, width, truncate=True):
+        text = str(value)
+        if truncate and len(text) > width:
+            return text[:width]
+        return text.rjust(width)
+
     def _display_name(self, geography, official_labels=False):
         if official_labels and getattr(geography, "sumlevel", None) == "140":
             return getattr(geography, "canonical_name", geography.name)
@@ -301,6 +364,22 @@ class GeoCompareCLI:
         display_geo = copy.deepcopy(geography)
         display_geo.name = getattr(geography, "canonical_name", geography.name)
         return display_geo
+
+    def _display_area(self, geography, square_kilometers=False):
+        raw_value = getattr(geography, "rc", {}).get("land_area")
+        if raw_value in {None, ""}:
+            return ""
+
+        try:
+            area_value = float(raw_value)
+            if square_kilometers:
+                area_value *= 2.589988110336
+            return f"{area_value:,.1f}"
+        except (TypeError, ValueError):
+            formatted = getattr(geography, "fc", {}).get("land_area")
+            if formatted:
+                return formatted.replace(" sqmi", "")
+            return str(raw_value)
 
     def display_label_search(self, args):
         search_results = self.engine.display_label_search(**vars(args))
@@ -778,61 +857,166 @@ class GeoCompareCLI:
         def metric_value(dp):
             return getattr(dp, display_store)[key]
 
-        distance_label = "Distance (km)" if args.kilometers else "Distance (mi)"
+        distance_label = "Dist (km)" if args.kilometers else "Dist (mi)"
+        area_label = "Area (sqkm)" if args.kilometers else "Area (sqmi)"
 
-        candidate_width = 44
-        population_width = 12
-        metric_width = 14
-        nearest_width = 31
-        distance_width = 13
-        match_width = 12
-        width = (
-            1
-            + candidate_width
-            + 1
-            + population_width
-            + 1
-            + metric_width
-            + 1
-            + nearest_width
-            + 1
-            + distance_width
-            + 1
-            + match_width
+        displayed_rows = results[: getattr(args, "n", len(results))]
+        population_values = [row["candidate"].fc["population"] for row in displayed_rows]
+        area_values = [
+            self._display_area(row["candidate"], square_kilometers=args.kilometers)
+            for row in displayed_rows
+        ] if args.show_area else []
+        candidate_values = [
+            self._display_name(row["candidate"], args.official_labels) for row in displayed_rows
+        ]
+        nearest_values = [
+            self._display_name(row["nearest_match"], args.official_labels) for row in displayed_rows
+        ]
+        metric_values = [metric_value(row["candidate"]) for row in displayed_rows]
+        match_values = [metric_value(row["nearest_match"]) for row in displayed_rows]
+        distance_values = [
+            f"{(row['distance_miles'] * 1.609344 if args.kilometers else row['distance_miles']):.1f}"
+            for row in displayed_rows
+        ]
+
+        candidate_width = max(44, len("Candidate"))
+        population_width = max(len("Pop"), *(len(value) for value in population_values))
+        area_width = max(len(area_label), *(len(value) for value in area_values)) if args.show_area else 0
+        metric_width = max(len("Value"), *(len(value) for value in metric_values))
+        nearest_width = max(31, len("Nearest qualifying geography"))
+        distance_width = max(len(distance_label), *(len(value) for value in distance_values))
+        match_width = max(len("Match Val"), *(len(value) for value in match_values))
+        columns = [
+            ("Candidate", candidate_width, False),
+            ("Pop", population_width, True),
+        ]
+        if args.show_area:
+            columns.append((area_label, area_width, True))
+        columns.extend(
+            [
+                ("Value", metric_width, True),
+                ("Nearest qualifying geography", nearest_width, False),
+                (distance_label, distance_width, True),
+                ("Match Val", match_width, True),
+            ]
         )
+        width = 1 + sum(column_width + 1 for _, column_width, _ in columns) - 1
         print("-" * width)
         print(
             " "
-            + self._fit("Candidate", candidate_width)
-            + " "
-            + self._fit("Population", population_width)
-            + " "
-            + self._fit("Metric", metric_width)
-            + " "
-            + self._fit("Nearest qualifying geography", nearest_width)
-            + " "
-            + self._fit(distance_label, distance_width)
-            + " "
-            + self._fit("Match", match_width)
+            + " ".join(
+                self._fit_right(header, column_width, truncate=False)
+                if right_align
+                else self._fit(header, column_width, truncate=False)
+                for header, column_width, right_align in columns
+            )
         )
         print("-" * width)
-        for row in results:
+        for row, candidate_name, nearest_name, candidate_metric, nearest_metric, area_value, distance_text in zip(
+            displayed_rows,
+            candidate_values,
+            nearest_values,
+            metric_values,
+            match_values,
+            area_values if args.show_area else [""] * len(displayed_rows),
+            distance_values,
+        ):
             candidate = row["candidate"]
-            nearest = row["nearest_match"]
-            distance_value = row["distance_miles"] * 1.609344 if args.kilometers else row["distance_miles"]
+            row_values = [
+                self._fit(candidate_name, candidate_width),
+                self._fit_right(candidate.fc["population"], population_width),
+            ]
+            if args.show_area:
+                row_values.append(self._fit_right(area_value, area_width))
+            row_values.extend(
+                [
+                    self._fit_right(candidate_metric, metric_width),
+                    self._fit(nearest_name, nearest_width),
+                    self._fit_right(distance_text, distance_width),
+                    self._fit_right(nearest_metric, match_width),
+                ]
+            )
+            print(" " + " ".join(row_values))
+        print("-" * width)
+
+    def local_average(self, args):
+        self._normalize_scope_args(args)
+        if not args.context:
+            args.context = "tracts+"
+        try:
+            results = self.engine.local_average(**vars(args))
+        except ValueError as exc:
+            self._eprint(str(exc))
+            return
+
+        if len(results) == 0:
+            self._eprint("Sorry, no geographies match your criteria.")
+            return
+
+        fetch_one = results[0]["candidate"]
+        resolved = self.engine.resolve_data_identifier(args.data_identifier, fetch_one)
+        display_store = resolved["display_store"]
+        key = resolved["key"]
+
+        def metric_value(dp):
+            return getattr(dp, display_store)[key]
+
+        average_label = "Local Avg"
+        span_label = "Span (km)" if args.kilometers else "Span (mi)"
+
+        displayed_rows = results[: getattr(args, "n", len(results))]
+        candidate_values = [
+            self._display_name(row["candidate"], args.official_labels) for row in displayed_rows
+        ]
+        population_values = [row["candidate"].fc["population"] for row in displayed_rows]
+        metric_values = [metric_value(row["candidate"]) for row in displayed_rows]
+        average_values = [self.engine._format_profile_component(key, row["local_average"]) for row in displayed_rows]
+        span_values = [
+            f"{(row['neighbor_span_miles'] * 1.609344 if args.kilometers else row['neighbor_span_miles']):.1f}"
+            for row in displayed_rows
+        ]
+
+        candidate_width = max(44, len("Candidate"))
+        population_width = max(len("Pop"), *(len(value) for value in population_values))
+        metric_width = max(len("Value"), *(len(value) for value in metric_values))
+        average_width = max(len(average_label), *(len(value) for value in average_values))
+        span_width = max(len(span_label), *(len(value) for value in span_values))
+        columns = [
+            ("Candidate", candidate_width, False),
+            ("Pop", population_width, True),
+            ("Value", metric_width, True),
+            (average_label, average_width, True),
+            (span_label, span_width, True),
+        ]
+        width = 1 + sum(column_width + 1 for _, column_width, _ in columns) - 1
+        print("-" * width)
+        print(
+            " "
+            + " ".join(
+                self._fit_right(header, column_width, truncate=False)
+                if right_align
+                else self._fit(header, column_width, truncate=False)
+                for header, column_width, right_align in columns
+            )
+        )
+        print("-" * width)
+        for row, candidate_name, average_value, span_value in zip(
+            displayed_rows,
+            candidate_values,
+            average_values,
+            span_values,
+        ):
             print(
                 " "
-                + self._fit(self._display_name(candidate, args.official_labels), candidate_width)
-                + " "
-                + self._fit(candidate.fc["population"], population_width)
-                + " "
-                + self._fit(metric_value(candidate), metric_width)
-                + " "
-                + self._fit(self._display_name(nearest, args.official_labels), nearest_width)
-                + " "
-                + self._fit(f"{distance_value:.1f}", distance_width)
-                + " "
-                + self._fit(metric_value(nearest), match_width)
+                + " ".join(
+                    [
+                        self._fit(candidate_name, candidate_width),
+                        self._fit_right(row["candidate"].fc["population"], population_width),
+                        self._fit_right(metric_value(row["candidate"]), metric_width),
+                        self._fit_right(average_value, average_width),
+                        self._fit_right(span_value, span_width),
+                    ]
+                )
             )
         print("-" * width)
 

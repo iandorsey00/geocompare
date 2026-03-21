@@ -69,6 +69,14 @@ geocompare query nearest "ZCTA5 94104" --universe places -n 15
 ```bash
 geocompare query remoteness median_household_income 75000 --universe tracts --where "population>=2500"
 geocompare query remoteness per_capita_income 35000 --target above --scope "tracts+ca" -n 20
+geocompare query remoteness median_household_income 100000 --universe tracts --where "population_density>=2500" --county-population-min 1000000 --one-per-county
+```
+
+### Local average
+
+```bash
+geocompare query local-average median_household_income --universe tracts --neighbors 20 -n 20
+geocompare query local-average per_capita_income --scope "tracts+ca" --where "population_density>=2500" --county-population-min 1000000 --one-per-county
 ```
 
 ### Distance

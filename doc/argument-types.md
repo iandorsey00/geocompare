@@ -7,6 +7,8 @@ Used by:
 ```bash
 geocompare query top <data_identifier>
 geocompare query bottom <data_identifier>
+geocompare query remoteness <data_identifier> <threshold>
+geocompare query local-average <data_identifier>
 geocompare export rows "<data_identifier_or_category> ..."
 ```
 
@@ -78,6 +80,7 @@ Compact scope forms:
 - `nations` / `nation` / `n`
 - `states` / `s`
 - `counties` / `c`
+- `tracts` / `tract` / `t`
 - `places` / `p`
 - `cbsas` / `cb`
 - `urbanareas` / `u`
@@ -87,6 +90,7 @@ Examples:
 
 - `states+`
 - `counties+ut`
+- `tracts+ca`
 - `places+ca`
 - `zctas+94103`
 - `ny`
@@ -95,6 +99,7 @@ Examples:
 Equivalent explicit scope examples:
 
 ```bash
+--universe tracts --in-state ca
 --universe places --in-state ca
 --universe counties --in-county 06075:county
 --universe counties --in-county "Los Angeles County, California"
@@ -117,13 +122,14 @@ Supported operators:
 - `<=`
 - `<`
 
-Multiple criteria can be joined with `,` or `+`.
+Multiple criteria can be joined with spaces, `,`, or `+`.
 
 Examples:
 
 ```bash
 geocompare query top median_rooms --where "population>=100000,median_rent<=1000" --universe places
 geocompare query top population --where "graduate_degree_or_higher>=150000" --universe places
+geocompare query remoteness median_household_income 100000 --universe tracts --where "population>=4000 population_density>=2500"
 ```
 
 When using shell metacharacters like `>` or `<`, quote the expression.

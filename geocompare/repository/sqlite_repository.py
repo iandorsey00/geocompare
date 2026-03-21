@@ -582,6 +582,7 @@ class SQLiteRepository(DataRepository):
         group=None,
         county_geoid=None,
         geofilter_conditions=None,
+        include_counties_geoids=False,
     ):
         conn = self._connect()
         try:
@@ -595,8 +596,11 @@ class SQLiteRepository(DataRepository):
                 geofilter_conditions=geofilter_conditions,
                 exclude_null_column=comp_column,
             )
+            select_columns = ["name", "latitude", "longitude", "population", comp_column]
+            if include_counties_geoids:
+                select_columns.append("counties_geoids")
             query = f"""
-                SELECT name, latitude, longitude, population, {comp_column}
+                SELECT {", ".join(select_columns)}
                 FROM demographic_profiles
                 WHERE {where_sql}
                   AND latitude IS NOT NULL

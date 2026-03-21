@@ -697,6 +697,9 @@ class Engine:
         context="tracts+",
         geofilter="",
         n=10,
+        county_population_min=None,
+        county_density_min=None,
+        one_per_county=False,
         **kwargs,
     ):
         """Rank geographies by distance to the nearest geography across a threshold."""
@@ -712,6 +715,11 @@ class Engine:
         if n <= 0:
             return []
 
+        allowed_county_geoids = self._build_allowed_county_geoids(
+            county_population_min=county_population_min,
+            county_density_min=county_density_min,
+        )
+
         if self._repo_supports("query_profile_metric_rows"):
             try:
                 sql_params = self._build_sql_query_params(context, geofilter, fetch_one)
@@ -722,9 +730,19 @@ class Engine:
                     group=sql_params["group"],
                     county_geoid=sql_params["county_geoid"],
                     geofilter_conditions=sql_params["geofilter_conditions"],
+                    include_counties_geoids=allowed_county_geoids is not None,
                 )
                 if rows:
-                    return self._remoteness_from_rows(rows, threshold_value, target_key, store, key, n)
+                    results = self._remoteness_from_rows(
+                        rows,
+                        threshold_value,
+                        target_key,
+                        store,
+                        key,
+                        n,
+                        allowed_county_geoids=allowed_county_geoids,
+                    )
+                    return self._limit_one_per_county(results, n) if one_per_county else results
             except RuntimeError:
                 pass
 
@@ -734,6 +752,10 @@ class Engine:
             return []
 
         filtered = self.context_filter(dpi_instances, context, geofilter)
+        if allowed_county_geoids is not None:
+            filtered = [
+                dp for dp in filtered if any(county in allowed_county_geoids for county in dp.counties)
+            ]
         filtered = [
             dp
             for dp in filtered
@@ -791,13 +813,287 @@ class Engine:
             )
 
         results.sort(key=lambda row: row["distance_miles"], reverse=True)
-        return results[:n]
+        results = results[:n] if not one_per_county else self._limit_one_per_county(results, n)
+        return results
 
-    def _remoteness_from_rows(self, rows, threshold_value, target_key, store, key, n):
+    def local_average(
+        self,
+        data_identifier,
+        context="tracts+",
+        geofilter="",
+        n=10,
+        neighbors=20,
+        county_population_min=None,
+        county_density_min=None,
+        one_per_county=False,
+        **kwargs,
+    ):
+        """Rank geographies by a distance-weighted local average of nearby geographies."""
+        fetch_one = self._identifier_probe_profile()
+        resolved = self.resolve_data_identifier(data_identifier, fetch_one)
+        key = resolved["key"]
+        store = resolved["store"]
+
+        if n <= 0:
+            return []
+        if neighbors <= 0:
+            raise ValueError("neighbors must be greater than 0.")
+
+        allowed_county_geoids = self._build_allowed_county_geoids(
+            county_population_min=county_population_min,
+            county_density_min=county_density_min,
+        )
+
+        if self._repo_supports("query_profile_metric_rows"):
+            try:
+                sql_params = self._build_sql_query_params(context, geofilter, fetch_one)
+                rows = self.primary_repository.query_profile_metric_rows(
+                    comp_column=f"{store}_{key}",
+                    universe_sl=sql_params["universe_sl"],
+                    group_sl=sql_params["group_sl"],
+                    group=sql_params["group"],
+                    county_geoid=sql_params["county_geoid"],
+                    geofilter_conditions=sql_params["geofilter_conditions"],
+                    include_counties_geoids=allowed_county_geoids is not None,
+                )
+                if rows:
+                    return self._local_average_from_rows(
+                        rows,
+                        store,
+                        key,
+                        n,
+                        neighbors,
+                        allowed_county_geoids=allowed_county_geoids,
+                        one_per_county=one_per_county,
+                    )
+            except RuntimeError:
+                pass
+
+        d = self.get_data_products()
+        dpi_instances = d["demographicprofiles"]
+        if not dpi_instances:
+            return []
+
+        filtered = self.context_filter(dpi_instances, context, geofilter)
+        if allowed_county_geoids is not None:
+            filtered = [
+                dp for dp in filtered if any(county in allowed_county_geoids for county in dp.counties)
+            ]
+        filtered = [
+            dp
+            for dp in filtered
+            if key in getattr(dp, store)
+            and not numpy.isnan(getattr(dp, store)[key])
+            and dp.rc.get("latitude") is not None
+            and dp.rc.get("longitude") is not None
+        ]
+        if not filtered:
+            raise ValueError("Sorry, no geographies match your criteria.")
+
+        entries = []
+        for dp in filtered:
+            entries.append(
+                {
+                    "name": dp.name,
+                    "latitude": float(dp.rc["latitude"]),
+                    "longitude": float(dp.rc["longitude"]),
+                    "population": 0 if dp.rc.get("population") is None else float(dp.rc["population"]),
+                    "metric_value": float(getattr(dp, store)[key]),
+                    "counties": list(dp.counties),
+                }
+            )
+
+        results = self._local_average_from_entries(entries, store, key, n, neighbors)
+        return self._limit_one_per_county(results, n) if one_per_county else results[:n]
+
+    def _build_allowed_county_geoids(self, county_population_min=None, county_density_min=None):
+        if county_population_min is None and county_density_min is None:
+            return None
+
+        allowed_by_population = None
+        if county_population_min is not None:
+            allowed_by_population = self._county_geoids_meeting_threshold(
+                comp_column="rc_population",
+                min_value=float(county_population_min),
+            )
+
+        allowed_by_density = None
+        if county_density_min is not None:
+            allowed_by_density = self._county_geoids_meeting_threshold(
+                comp_column="c_population_density",
+                min_value=float(county_density_min),
+            )
+
+        allowed = None
+        for candidate_set in (allowed_by_population, allowed_by_density):
+            if candidate_set is None:
+                continue
+            allowed = set(candidate_set) if allowed is None else allowed.intersection(candidate_set)
+
+        return allowed if allowed is not None else None
+
+    def _county_geoids_meeting_threshold(self, comp_column, min_value):
+        if self._repo_supports("query_profile_metric_rows"):
+            try:
+                rows = self.primary_repository.query_profile_metric_rows(
+                    comp_column=comp_column,
+                    universe_sl="050",
+                )
+                return {
+                    self.ct.county_name_to_geoid[name]
+                    for name, _latitude, _longitude, _population, metric_value in rows
+                    if name in self.ct.county_name_to_geoid and metric_value is not None and metric_value >= min_value
+                }
+            except RuntimeError:
+                pass
+
+        d = self.get_data_products()
+        allowed = set()
+        for dp in d.get("demographicprofiles", []):
+            if dp.sumlevel != "050":
+                continue
+            metric_value = dp.rc.get("population") if comp_column == "rc_population" else dp.c.get("population_density")
+            if metric_value is None or metric_value < min_value:
+                continue
+            county_geoid = self.ct.county_name_to_geoid.get(dp.name)
+            if county_geoid:
+                allowed.add(county_geoid)
+        return allowed
+
+    def _limit_one_per_county(self, results, n):
+        if not results:
+            return []
+
+        distinct_results = []
+        seen_counties = set()
+        for row in results:
+            candidate = row["candidate"]
+            county_geoids = tuple(getattr(candidate, "counties", []) or [])
+            county_key = county_geoids[0] if county_geoids else candidate.name
+            if county_key in seen_counties:
+                continue
+            seen_counties.add(county_key)
+            distinct_results.append(row)
+            if len(distinct_results) >= n:
+                break
+        return distinct_results
+
+    def _local_average_from_rows(
+        self,
+        rows,
+        store,
+        key,
+        n,
+        neighbors,
+        allowed_county_geoids=None,
+        one_per_county=False,
+    ):
         entries = []
         for row in rows:
-            name, latitude, longitude, population, metric_value = row
+            if len(row) >= 6:
+                name, latitude, longitude, population, metric_value, counties_geoids = row[:6]
+            else:
+                name, latitude, longitude, population, metric_value = row
+                counties_geoids = ""
             if latitude is None or longitude is None or metric_value is None:
+                continue
+            county_geoids = self._parse_counties_geoids(counties_geoids)
+            if allowed_county_geoids is not None and not any(
+                county in allowed_county_geoids for county in county_geoids
+            ):
+                continue
+            entries.append(
+                {
+                    "name": name,
+                    "latitude": float(latitude),
+                    "longitude": float(longitude),
+                    "population": 0 if population is None else float(population),
+                    "metric_value": float(metric_value),
+                    "counties": county_geoids,
+                }
+            )
+
+        if not entries:
+            raise ValueError("Sorry, no geographies match your criteria.")
+
+        results = self._local_average_from_entries(entries, store, key, n, neighbors)
+        return self._limit_one_per_county(results, n) if one_per_county else results[:n]
+
+    def _local_average_from_entries(self, entries, store, key, n, neighbors):
+        if len(entries) <= 1:
+            raise ValueError("Sorry, no neighboring geographies remain for local averaging.")
+
+        grid = self._build_spatial_grid(entries)
+        results = []
+        dp_cache = {}
+
+        for candidate in entries:
+            nearest_entries = self._nearest_entries(candidate, grid, neighbors)
+            if not nearest_entries:
+                continue
+
+            local_average = self._distance_weighted_average(nearest_entries)
+            neighbor_span_miles = nearest_entries[-1][1]
+
+            candidate_dp = dp_cache.get(candidate["name"])
+            if candidate_dp is None:
+                candidate_dp = self._fetch_profile_by_name(candidate["name"])
+                dp_cache[candidate["name"]] = candidate_dp
+
+            results.append(
+                {
+                    "candidate": candidate_dp,
+                    "candidate_value": getattr(candidate_dp, store)[key],
+                    "local_average": local_average,
+                    "neighbor_span_miles": neighbor_span_miles,
+                }
+            )
+
+        if not results:
+            raise ValueError("Sorry, no neighboring geographies remain for local averaging.")
+
+        results.sort(key=lambda row: row["local_average"], reverse=True)
+        return results
+
+    def _distance_weighted_average(self, nearest_entries):
+        weighted_total = 0.0
+        total_weight = 0.0
+        for entry, distance_miles in nearest_entries:
+            population = max(entry["population"], 1.0)
+            weight = population / max(distance_miles, 0.1)
+            weighted_total += entry["metric_value"] * weight
+            total_weight += weight
+        return weighted_total / total_weight if total_weight else 0.0
+
+    def _parse_counties_geoids(self, counties_geoids):
+        raw = str(counties_geoids or "").strip()
+        if not raw:
+            return []
+        return [part for part in raw.strip("|").split("|") if part]
+
+    def _remoteness_from_rows(
+        self,
+        rows,
+        threshold_value,
+        target_key,
+        store,
+        key,
+        n,
+        allowed_county_geoids=None,
+    ):
+        entries = []
+        for row in rows:
+            if len(row) >= 6:
+                name, latitude, longitude, population, metric_value, counties_geoids = row[:6]
+            else:
+                name, latitude, longitude, population, metric_value = row
+                counties_geoids = ""
+            if latitude is None or longitude is None or metric_value is None:
+                continue
+            county_geoids = self._parse_counties_geoids(counties_geoids)
+            if allowed_county_geoids is not None and not any(
+                county in allowed_county_geoids for county in county_geoids
+            ):
                 continue
             entry = {
                 "name": name,
@@ -805,6 +1101,7 @@ class Engine:
                 "longitude": float(longitude),
                 "population": 0 if population is None else float(population),
                 "metric_value": float(metric_value),
+                "counties": county_geoids,
             }
             entries.append(entry)
 
@@ -864,6 +1161,49 @@ class Engine:
             )
             grid["buckets"].setdefault(key, []).append(entry)
         return grid
+
+    def _nearest_entries(self, candidate, grid, neighbors):
+        cell_degrees = grid["cell_degrees"]
+        buckets = grid["buckets"]
+        lat = candidate["latitude"]
+        lon = candidate["longitude"]
+        cell = (
+            math.floor(lat / cell_degrees),
+            math.floor(lon / cell_degrees),
+        )
+
+        collected = []
+        radius = 0
+        seen_names = set()
+
+        while radius <= 720:
+            for dlat in range(-radius, radius + 1):
+                for dlon in range(-radius, radius + 1):
+                    if radius and max(abs(dlat), abs(dlon)) != radius:
+                        continue
+                    for entry in buckets.get((cell[0] + dlat, cell[1] + dlon), []):
+                        if entry["name"] == candidate["name"] or entry["name"] in seen_names:
+                            continue
+                        distance = self._haversine_miles(
+                            lat,
+                            lon,
+                            entry["latitude"],
+                            entry["longitude"],
+                        )
+                        collected.append((entry, distance))
+                        seen_names.add(entry["name"])
+
+            if len(collected) >= neighbors:
+                collected.sort(key=lambda item: item[1])
+                worst_distance = collected[neighbors - 1][1]
+                lower_bound = self._grid_outer_ring_lower_bound(lat, lon, cell, radius + 1, cell_degrees)
+                if worst_distance <= lower_bound:
+                    return collected[:neighbors]
+
+            radius += 1
+
+        collected.sort(key=lambda item: item[1])
+        return collected[:neighbors]
 
     def _nearest_qualifying_entry(self, candidate, grid, qualifying_names):
         cell_degrees = grid["cell_degrees"]
