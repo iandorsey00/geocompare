@@ -4,6 +4,7 @@ import logging
 import re
 import sqlite3
 from collections import defaultdict
+from math import atan2, cos, radians, sin, sqrt
 
 # from initialize_sqlalchemy import Base, engine, session
 from itertools import islice
@@ -14,6 +15,7 @@ import pandas as pd
 
 from geocompare.models.demographic_profile import DemographicProfile
 from geocompare.models.geovector import GeoVector
+from geocompare.tools.geography_names import humanized_tract_name
 from geocompare.tools.numeric import parse_number
 from geocompare.tools.state_lookup import StateLookup
 
@@ -100,6 +102,73 @@ class Database:
     ###########################################################################
     # Helper methods for __init__
 
+    def _haversine_miles(self, lat1, lon1, lat2, lon2):
+        r_miles = 3958.7613
+        phi1 = radians(lat1)
+        phi2 = radians(lat2)
+        dphi = radians(lat2 - lat1)
+        dlambda = radians(lon2 - lon1)
+
+        a = sin(dphi / 2.0) ** 2 + cos(phi1) * cos(phi2) * sin(dlambda / 2.0) ** 2
+        c = 2.0 * atan2(sqrt(a), sqrt(1.0 - a))
+        return r_miles * c
+
+    def _humanize_tract_names(self):
+        county_places = defaultdict(list)
+        state_places = defaultdict(list)
+
+        for dp in self.demographicprofiles:
+            if dp.sumlevel != "160":
+                continue
+            latitude = dp.rc.get("latitude")
+            longitude = dp.rc.get("longitude")
+            if latitude is None or longitude is None:
+                continue
+            state_places[dp.state].append(dp)
+            for county_geoid in getattr(dp, "counties", []):
+                county_places[county_geoid].append(dp)
+
+        tract_aliases = {}
+        for dp in self.demographicprofiles:
+            if dp.sumlevel != "140":
+                continue
+            latitude = dp.rc.get("latitude")
+            longitude = dp.rc.get("longitude")
+            if latitude is None or longitude is None:
+                continue
+
+            county_geoid = dp.counties[0] if getattr(dp, "counties", None) else None
+            candidates = county_places.get(county_geoid, []) if county_geoid else []
+            if not candidates:
+                candidates = state_places.get(dp.state, [])
+
+            nearest_place = None
+            nearest_distance = None
+            for place in candidates:
+                distance = self._haversine_miles(
+                    latitude,
+                    longitude,
+                    place.rc.get("latitude"),
+                    place.rc.get("longitude"),
+                )
+                if nearest_distance is None or distance < nearest_distance:
+                    nearest_place = place
+                    nearest_distance = distance
+
+            dp.canonical_name = dp.name
+            dp.name = humanized_tract_name(
+                dp.geoid,
+                nearby_place_name=getattr(nearest_place, "name", None),
+                state_abbrev=dp.state,
+            )
+            tract_aliases[dp.geoid] = dp.name
+
+        for gv in self.geovectors:
+            if gv.sumlevel != "140":
+                continue
+            gv.canonical_name = gv.name
+            gv.name = tract_aliases.get(gv.geoid, gv.name)
+
     def _progress(self, message, current=None, total=None):
         cb = getattr(self, "_progress_callback", None)
         if cb is None:
@@ -137,7 +206,7 @@ class Database:
             if not row:
                 continue
 
-            if row[0] == "GEOID":
+            if row[0] == "USPS":
                 normalized_rows.append(
                     [
                         "USPS",
@@ -157,23 +226,25 @@ class Database:
                 )
                 continue
 
-            padded = list(row) + [""] * max(0, 10 - len(row))
-            geoid = padded[0]
+            padded = list(row) + [""] * max(0, 9 - len(row))
+            usps = padded[0]
+            geoid = padded[1]
+            geoidfq = padded[2] or (f"1400000US{geoid}" if geoid and "US" not in geoid else geoid)
             normalized_rows.append(
                 [
-                    "US",
-                    f"14000US{geoid}" if "US" not in geoid else geoid,
-                    f"14000US{geoid}" if "US" not in geoid else geoid,
+                    usps,
+                    geoidfq,
+                    geoidfq,
                     "",
                     "",
                     "",
                     "",
-                    padded[1],
-                    padded[2],
                     padded[3],
                     padded[4],
                     padded[5],
                     padded[6],
+                    padded[7],
+                    padded[8],
                 ]
             )
 
@@ -1675,6 +1746,8 @@ class Database:
         self._progress(
             f"Created geovectors: {len(self.geovectors):,} " f"(skipped: {geovector_failures:,})"
         )
+
+        self._humanize_tract_names()
 
         # Debug output
         self.debug_output_list("geovectors")

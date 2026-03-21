@@ -4,6 +4,7 @@ import json
 import logging
 import math
 import sqlite3
+import zlib
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -13,6 +14,7 @@ from geocompare.repository.base import DataRepository
 from geocompare.repository.serialization import dump_payload, load_payload
 
 CURRENT_SCHEMA_VERSION = 1
+_COMPRESSED_PAYLOAD_PREFIX = b"Z1:"
 
 
 class SQLiteRepository(DataRepository):
@@ -292,6 +294,7 @@ class SQLiteRepository(DataRepository):
     def save_data_products(self, data_products):
         self.path.parent.mkdir(parents=True, exist_ok=True)
         payload = dump_payload(data_products)
+        payload = _COMPRESSED_PAYLOAD_PREFIX + zlib.compress(payload, level=6)
         updated_at = datetime.now(timezone.utc).isoformat()
 
         conn = self._connect()
@@ -327,7 +330,10 @@ class SQLiteRepository(DataRepository):
             raise RuntimeError(f"no data products found in sqlite file: {self.path}")
 
         try:
-            return load_payload(row[0])
+            payload = row[0]
+            if isinstance(payload, (bytes, bytearray)) and payload.startswith(_COMPRESSED_PAYLOAD_PREFIX):
+                payload = zlib.decompress(payload[len(_COMPRESSED_PAYLOAD_PREFIX) :])
+            return load_payload(payload)
         except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
             raise RuntimeError(f"data product payload is corrupted or incompatible: {self.path}")
         except Exception as e:
@@ -348,6 +354,27 @@ class SQLiteRepository(DataRepository):
             ).fetchone()
         except sqlite3.Error as e:
             raise RuntimeError(f"unexpected sqlite error while loading profile: {e!r}")
+        finally:
+            conn.close()
+
+        if row is None:
+            return None
+
+        return load_payload(row[0])
+
+    def get_any_demographic_profile(self):
+        conn = self._connect()
+        try:
+            row = conn.execute(
+                """
+                SELECT payload
+                FROM demographic_profiles
+                ORDER BY population DESC
+                LIMIT 1
+                """
+            ).fetchone()
+        except sqlite3.Error as e:
+            raise RuntimeError(f"unexpected sqlite error while loading sample profile: {e!r}")
         finally:
             conn.close()
 
@@ -544,5 +571,39 @@ class SQLiteRepository(DataRepository):
             return conn.execute(query, params).fetchall()
         except sqlite3.Error as e:
             raise RuntimeError(f"unexpected sqlite error while querying coordinates: {e!r}")
+        finally:
+            conn.close()
+
+    def query_profile_metric_rows(
+        self,
+        comp_column,
+        universe_sl=None,
+        group_sl=None,
+        group=None,
+        county_geoid=None,
+        geofilter_conditions=None,
+    ):
+        conn = self._connect()
+        try:
+            self._ensure_column(conn, "demographic_profiles", comp_column)
+            where_sql, params = self._build_profile_where_sql(
+                conn,
+                universe_sl=universe_sl,
+                group_sl=group_sl,
+                group=group,
+                county_geoid=county_geoid,
+                geofilter_conditions=geofilter_conditions,
+                exclude_null_column=comp_column,
+            )
+            query = f"""
+                SELECT name, latitude, longitude, population, {comp_column}
+                FROM demographic_profiles
+                WHERE {where_sql}
+                  AND latitude IS NOT NULL
+                  AND longitude IS NOT NULL
+            """
+            return conn.execute(query, params).fetchall()
+        except sqlite3.Error as e:
+            raise RuntimeError(f"unexpected sqlite error while querying metric rows: {e!r}")
         finally:
             conn.close()

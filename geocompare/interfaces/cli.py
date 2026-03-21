@@ -1,4 +1,5 @@
 import argparse
+import copy
 import json
 import logging
 import re
@@ -67,6 +68,7 @@ class GeoCompareCLI:
         search_parser.add_argument(
             "--wide", action="store_true", help="wider output without truncation"
         )
+        self._add_label_arg(search_parser)
         search_parser.set_defaults(func=self.display_label_search)
 
         profile_parser = query_subparsers.add_parser("profile", help="show one demographic profile")
@@ -77,6 +79,7 @@ class GeoCompareCLI:
             default="full",
             help="profile display density",
         )
+        self._add_label_arg(profile_parser)
         profile_parser.set_defaults(func=self.get_dp)
 
         profile_compare_parser = query_subparsers.add_parser(
@@ -91,12 +94,14 @@ class GeoCompareCLI:
             default="full",
             help="profile display density",
         )
+        self._add_label_arg(profile_compare_parser)
         profile_compare_parser.set_defaults(func=self.profile_compare)
 
         similar_parser = query_subparsers.add_parser("similar", help="show nearest geovectors")
         similar_parser.add_argument("display_label", help="the exact geography name")
         self._add_context_args(similar_parser)
         similar_parser.add_argument("-n", type=int, default=15, help="number of rows to display")
+        self._add_label_arg(similar_parser)
         similar_parser.set_defaults(func=self.compare_geovectors)
 
         similar_app_parser = query_subparsers.add_parser(
@@ -107,18 +112,21 @@ class GeoCompareCLI:
         similar_app_parser.add_argument(
             "-n", type=int, default=15, help="number of rows to display"
         )
+        self._add_label_arg(similar_app_parser)
         similar_app_parser.set_defaults(func=self.compare_geovectors_app)
 
         top_parser = query_subparsers.add_parser(
             "top", help="show highest values by data identifier"
         )
         self._add_rank_args(top_parser)
+        self._add_label_arg(top_parser)
         top_parser.set_defaults(func=self.extreme_values)
 
         bottom_parser = query_subparsers.add_parser(
             "bottom", help="show lowest values by data identifier"
         )
         self._add_rank_args(bottom_parser)
+        self._add_label_arg(bottom_parser)
         bottom_parser.set_defaults(func=self.lowest_values)
 
         nearest_parser = query_subparsers.add_parser(
@@ -128,6 +136,7 @@ class GeoCompareCLI:
         self._add_filter_arg(nearest_parser)
         self._add_context_args(nearest_parser)
         nearest_parser.add_argument("-n", type=int, default=15, help="number of rows to display")
+        self._add_label_arg(nearest_parser)
         nearest_parser.set_defaults(func=self.closest_geographies)
 
         remoteness_parser = query_subparsers.add_parser(
@@ -145,8 +154,12 @@ class GeoCompareCLI:
         self._add_filter_arg(remoteness_parser)
         self._add_context_args(remoteness_parser)
         remoteness_parser.add_argument(
+            "-k", "--kilometers", action="store_true", help="display distance in kilometers"
+        )
+        remoteness_parser.add_argument(
             "-n", type=int, default=15, help="number of rows to display"
         )
+        self._add_label_arg(remoteness_parser)
         remoteness_parser.set_defaults(func=self.remoteness)
 
         dist_parser = query_subparsers.add_parser("distance", help="distance between two geographies")
@@ -174,6 +187,7 @@ class GeoCompareCLI:
         resolve_parser.add_argument(
             "--wide", action="store_true", help="wider output without truncation"
         )
+        self._add_label_arg(resolve_parser)
         resolve_parser.set_defaults(func=self.resolve_geography)
 
         export_parser = subparsers.add_parser("export", help="export data as CSV")
@@ -204,6 +218,7 @@ class GeoCompareCLI:
             default="full",
             help="profile export density",
         )
+        self._add_label_arg(export_profile_parser)
         export_profile_parser.set_defaults(func=self.get_csv_dp)
 
         args = parser.parse_args()
@@ -225,6 +240,13 @@ class GeoCompareCLI:
             "--where",
             dest="geofilter",
             help="filter criteria in modern form (for example: population>=100000)",
+        )
+
+    def _add_label_arg(self, parser):
+        parser.add_argument(
+            "--official-labels",
+            action="store_true",
+            help="display official Census tract labels when available",
         )
 
     def _add_context_args(self, parser):
@@ -268,18 +290,34 @@ class GeoCompareCLI:
             return text[:width]
         return text.ljust(width)
 
+    def _display_name(self, geography, official_labels=False):
+        if official_labels and getattr(geography, "sumlevel", None) == "140":
+            return getattr(geography, "canonical_name", geography.name)
+        return geography.name
+
+    def _display_profile(self, geography, official_labels=False):
+        if not official_labels or getattr(geography, "sumlevel", None) != "140":
+            return geography
+        display_geo = copy.deepcopy(geography)
+        display_geo.name = getattr(geography, "canonical_name", geography.name)
+        return display_geo
+
     def display_label_search(self, args):
         search_results = self.engine.display_label_search(**vars(args))
         if args.format == "json":
             payload = [
-                {"name": r.name, "population": r.fc["population"]} for r in search_results[: args.n]
+                {
+                    "name": self._display_name(r, args.official_labels),
+                    "population": r.fc["population"],
+                }
+                for r in search_results[: args.n]
             ]
             print(json.dumps(payload, indent=2))
             return
         if args.format == "csv":
             print("Name,Population")
             for r in search_results[: args.n]:
-                print(f'"{r.name}","{r.fc["population"]}"')
+                print(f'"{self._display_name(r, args.official_labels)}","{r.fc["population"]}"')
             return
 
         name_width = 70 if args.wide else 45
@@ -292,7 +330,7 @@ class GeoCompareCLI:
             iam = " "
             out_str = (
                 iam
-                + self._fit(getattr(dpi, "name"), name_width, truncate=truncate)
+                + self._fit(self._display_name(dpi, args.official_labels), name_width, truncate=truncate)
                 + iam
                 + getattr(dpi, "fc")["population"].rjust(20)
             )
@@ -316,7 +354,7 @@ class GeoCompareCLI:
         if len(dp_list) == 0:
             self._eprint("Sorry, there is no geography with that name.")
             return
-        print(dp_list[0].to_table(view=args.profile_view))
+        print(self._display_profile(dp_list[0], args.official_labels).to_table(view=args.profile_view))
 
     def _profile_metric_value(self, dp, row_mode, key):
         if not dp._can_render_row(row_mode, key):
@@ -353,6 +391,8 @@ class GeoCompareCLI:
             except ValueError:
                 self._eprint(f"No geography found for display label: {display_label}")
                 return
+
+        dps = [self._display_profile(dp, args.official_labels) for dp in dps]
 
         sections = dps[0]._sections_for_view(args.profile_view)
         rows = []
@@ -491,12 +531,17 @@ class GeoCompareCLI:
             pop = match.get("population")
             pop_display = "" if pop is None else f"{int(pop):,}"
             cid = match["canonical_id"] if args.wide else match["canonical_id"][:36]
+            display_name = (
+                match.get("canonical_name")
+                if args.official_labels and match.get("sumlevel") == "140" and match.get("canonical_name")
+                else match["name"]
+            )
             print(
                 f" {cid.ljust(id_width)}"
                 f" {match['sumlevel'].ljust(15)}"
                 f" {match['state'].ljust(7)}"
                 f" {pop_display.rjust(12)}"
-                f" {match['name']}"
+                f" {display_name}"
             )
         print("-" * (id_width + 58))
 
@@ -533,6 +578,9 @@ class GeoCompareCLI:
         print("-" * width)
 
         for closest_pv in closest_gvs:
+            if args.official_labels and getattr(closest_pv, "sumlevel", None) == "140":
+                closest_pv = copy.deepcopy(closest_pv)
+                closest_pv.name = getattr(closest_pv, "canonical_name", closest_pv.name)
             print(
                 "",
                 closest_pv.display_row(mode),
@@ -614,7 +662,7 @@ class GeoCompareCLI:
         def ev_print_row(dpi):
             out_str = (
                 iam
-                + getattr(dpi, "name").ljust(45)[:45]
+                + self._display_name(dpi, args.official_labels).ljust(45)[:45]
                 + iam
                 + getattr(dpi, "fc")["population"].rjust(20)
             )
@@ -686,7 +734,10 @@ class GeoCompareCLI:
 
         def cg_print_row(dpi, distance):
             return (
-                iam + getattr(dpi, "name").ljust(45)[:45] + iam + str(round(distance, 1)).rjust(20)
+                iam
+                + self._display_name(dpi, args.official_labels).ljust(45)[:45]
+                + iam
+                + str(round(distance, 1)).rjust(20)
             )
 
         universe_sl, group_sl, group = self.slt.unpack_context(args.context)
@@ -727,28 +778,61 @@ class GeoCompareCLI:
         def metric_value(dp):
             return getattr(dp, display_store)[key]
 
-        width = 126
+        distance_label = "Distance (km)" if args.kilometers else "Distance (mi)"
+
+        candidate_width = 44
+        population_width = 12
+        metric_width = 14
+        nearest_width = 31
+        distance_width = 13
+        match_width = 12
+        width = (
+            1
+            + candidate_width
+            + 1
+            + population_width
+            + 1
+            + metric_width
+            + 1
+            + nearest_width
+            + 1
+            + distance_width
+            + 1
+            + match_width
+        )
         print("-" * width)
         print(
-            " Candidate".ljust(45)
-            + " Population".rjust(12)
-            + " Metric".rjust(16)
-            + " Nearest qualifying geography".rjust(32)
-            + " Distance".rjust(11)
-            + " Match".rjust(10)
+            " "
+            + self._fit("Candidate", candidate_width)
+            + " "
+            + self._fit("Population", population_width)
+            + " "
+            + self._fit("Metric", metric_width)
+            + " "
+            + self._fit("Nearest qualifying geography", nearest_width)
+            + " "
+            + self._fit(distance_label, distance_width)
+            + " "
+            + self._fit("Match", match_width)
         )
         print("-" * width)
         for row in results:
             candidate = row["candidate"]
             nearest = row["nearest_match"]
+            distance_value = row["distance_miles"] * 1.609344 if args.kilometers else row["distance_miles"]
             print(
                 " "
-                + candidate.name.ljust(44)[:44]
-                + candidate.fc["population"].rjust(12)
-                + metric_value(candidate).rjust(16)[:16]
-                + nearest.name.rjust(32)[:32]
-                + f"{row['distance_miles']:.1f}".rjust(11)
-                + metric_value(nearest).rjust(10)[:10]
+                + self._fit(self._display_name(candidate, args.official_labels), candidate_width)
+                + " "
+                + self._fit(candidate.fc["population"], population_width)
+                + " "
+                + self._fit(metric_value(candidate), metric_width)
+                + " "
+                + self._fit(self._display_name(nearest, args.official_labels), nearest_width)
+                + " "
+                + self._fit(f"{distance_value:.1f}", distance_width)
+                + " "
+                + self._fit(metric_value(nearest), match_width)
             )
         print("-" * width)
 
@@ -757,7 +841,8 @@ class GeoCompareCLI:
         self.engine.rows(**vars(args))
 
     def get_csv_dp(self, args):
-        self.engine.get_csv_dp(**vars(args))
+        dp = self.engine.get_dp(display_label=args.display_label)[0]
+        self._display_profile(dp, args.official_labels).tocsv(view=args.profile_view)
 
 
 def main():

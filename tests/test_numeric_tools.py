@@ -7,6 +7,7 @@ def test_parse_number_tolerant_cleanup():
     assert parse_number("$1,234") == 1234
     assert parse_number("-12.3%", as_type="float") == -12.3
     assert np.isnan(parse_number("abc"))
+    assert np.isnan(parse_number("-666666666"))
 
 
 def test_safe_divide():

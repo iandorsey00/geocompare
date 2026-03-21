@@ -3,6 +3,15 @@ from typing import Any
 
 import numpy as np
 
+_KNOWN_MISSING_SENTINELS = {
+    -666666666,
+    -222222222,
+    -333333333,
+    -555555555,
+    -888888888,
+    -999999999,
+}
+
 
 def parse_number(
     value: Any,
@@ -34,12 +43,20 @@ def parse_number(
     if negative and allow_negative:
         filtered = "-" + filtered
 
+    try:
+        numeric = float(filtered)
+    except ValueError:
+        return default
+
+    if numeric in _KNOWN_MISSING_SENTINELS:
+        return default
+
     if as_type == "int":
         return int(filtered.split(".")[0] or 0)
     if as_type == "float":
-        return float(filtered)
+        return numeric
     if as_type == "default":
-        return float(filtered) if "." in value else int(filtered)
+        return numeric if "." in value else int(filtered)
 
     raise ValueError(f"Unsupported as_type: {as_type}")
 

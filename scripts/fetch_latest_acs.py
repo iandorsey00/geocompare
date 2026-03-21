@@ -331,6 +331,24 @@ def discover_latest_acs_year() -> str:
 
 def is_sequence_based_acs_year(year: int) -> bool:
     base = f"{ACS_ROOT}{year}/"
+    pages = [
+        urljoin(base, "sequence-based-SF/documentation/user_tools/"),
+        urljoin(base, "data/5_year_seq_by_state/"),
+    ]
+    for page in pages:
+        try:
+            html = fetch_text(page)
+        except RateLimitedError:
+            raise
+        except Exception:
+            continue
+        if (
+            "ACS_5yr_Seq_Table_Number_Lookup.txt" in html
+            or f"g{year}5us.csv" in html
+            or f"g{year}5us.txt" in html
+        ):
+            return True
+
     candidates = [
         urljoin(base, "sequence-based-SF/documentation/user_tools/ACS_5yr_Seq_Table_Number_Lookup.txt"),
         urljoin(base, "data/5_year_seq_by_state/g" + str(year) + "5us.csv"),
@@ -340,6 +358,20 @@ def is_sequence_based_acs_year(year: int) -> bool:
 
 def is_table_based_acs_year(year: int) -> bool:
     base = f"{ACS_ROOT}{year}/table-based-SF/"
+    pages = [
+        urljoin(base, "documentation/"),
+        urljoin(base, "data/5YRData/"),
+    ]
+    for page in pages:
+        try:
+            html = fetch_text(page)
+        except RateLimitedError:
+            raise
+        except Exception:
+            continue
+        if f"Geos{year}5YR.txt" in html or f"acsdt5y{year}-b01003.dat" in html:
+            return True
+
     candidates = [
         urljoin(base, f"documentation/Geos{year}5YR.txt"),
         urljoin(base, f"data/5YRData/acsdt5y{year}-b01003.dat"),
@@ -755,19 +787,26 @@ def fetch_acs_geography_file(
         urljoin(base, f"data/5_year_seq_by_state/{filename}"),
         urljoin(base, f"sequence-based-SF/documentation/geography/5yr_year_geo/{filename}"),
     ]
+    last_error = None
     for url in candidates:
-        if not url_exists(url):
+        try:
+            return download_file(
+                url,
+                dest,
+                overwrite=overwrite,
+                resume=resume,
+                dry_run=dry_run,
+                timeout=timeout,
+                max_attempts=max_attempts,
+                progress_prefix=progress_prefix,
+            )
+        except RateLimitedError:
+            raise
+        except DownloadError as e:
+            last_error = e
             continue
-        return download_file(
-            url,
-            dest,
-            overwrite=overwrite,
-            resume=resume,
-            dry_run=dry_run,
-            timeout=timeout,
-            max_attempts=max_attempts,
-            progress_prefix=progress_prefix,
-        )
+    if last_error:
+        raise DownloadError(f"Could not locate geography file for {filename}: {last_error}")
     raise DownloadError(f"Could not locate geography file for {filename}")
 
 
@@ -787,7 +826,7 @@ def fetch_acs_estimate_file(
     base = f"{ACS_ROOT}{acs_year}/"
     txt_name = f"e{acs_year}5{state}{seq}000.txt"
     old_url = urljoin(base, f"data/5_year_seq_by_state/{txt_name}")
-    if url_exists(old_url):
+    try:
         return download_file(
             old_url,
             dest,
@@ -798,6 +837,10 @@ def fetch_acs_estimate_file(
             max_attempts=max_attempts,
             progress_prefix=progress_prefix,
         )
+    except RateLimitedError:
+        raise
+    except DownloadError:
+        pass
 
     state_dir = STATE_DIR_NAMES.get(state)
     if not state_dir:
@@ -809,9 +852,6 @@ def fetch_acs_estimate_file(
         "sequence-based-SF/data/5_year_seq_by_state/"
         f"{state_dir}/All_Geographies_Not_Tracts_Block_Groups/{zip_name}",
     )
-    if not url_exists(zip_url):
-        raise DownloadError(f"Could not locate estimate file for {txt_name}")
-
     zip_dest = dest.with_suffix(".zip")
     zip_status = download_file(
         zip_url,
@@ -848,19 +888,26 @@ def fetch_table_geography_file(
         urljoin(base, f"documentation/{filename}"),
         urljoin(base, filename),
     ]
+    last_error = None
     for url in candidates:
-        if not url_exists(url):
+        try:
+            return download_file(
+                url,
+                dest,
+                overwrite=overwrite,
+                resume=resume,
+                dry_run=dry_run,
+                timeout=timeout,
+                max_attempts=max_attempts,
+                progress_prefix=progress_prefix,
+            )
+        except RateLimitedError:
+            raise
+        except DownloadError as e:
+            last_error = e
             continue
-        return download_file(
-            url,
-            dest,
-            overwrite=overwrite,
-            resume=resume,
-            dry_run=dry_run,
-            timeout=timeout,
-            max_attempts=max_attempts,
-            progress_prefix=progress_prefix,
-        )
+    if last_error:
+        raise DownloadError(f"Could not locate table-based geography file {filename}: {last_error}")
     raise DownloadError(f"Could not locate table-based geography file {filename}")
 
 
@@ -883,18 +930,27 @@ def fetch_table_data_file(
         urljoin(base, filename),
         urljoin(base, filename.upper()),
     ]
+    last_error = None
     for url in candidates:
-        if not url_exists(url):
+        try:
+            return download_file(
+                url,
+                dest,
+                overwrite=overwrite,
+                resume=resume,
+                dry_run=dry_run,
+                timeout=timeout,
+                max_attempts=max_attempts,
+                progress_prefix=progress_prefix,
+            )
+        except RateLimitedError:
+            raise
+        except DownloadError as e:
+            last_error = e
             continue
-        return download_file(
-            url,
-            dest,
-            overwrite=overwrite,
-            resume=resume,
-            dry_run=dry_run,
-            timeout=timeout,
-            max_attempts=max_attempts,
-            progress_prefix=progress_prefix,
+    if last_error:
+        raise DownloadError(
+            f"Could not locate table-based ACS file for {table_id}: {filename}: {last_error}"
         )
     raise DownloadError(f"Could not locate table-based ACS file for {table_id}: {filename}")
 
@@ -1104,12 +1160,10 @@ def main() -> int:
         for year in fallback_years:
             try:
                 acs_year = str(year)
-                layout = detect_acs_layout_for_year(year)
-                if layout is None:
-                    raise DownloadError(f"No supported ACS layout found for {year}.")
-                acs_layout = layout
-                if layout == "table":
-                    geos_dest = out_dir / f"Geos{acs_year}5YR.txt"
+                bootstrap_errors = []
+
+                geos_dest = out_dir / f"Geos{acs_year}5YR.txt"
+                try:
                     bootstrap_status = fetch_table_geography_file(
                         acs_year,
                         geos_dest,
@@ -1120,7 +1174,14 @@ def main() -> int:
                         max_attempts=args.max_attempts,
                         progress_prefix="[1/?]",
                     )
-                else:
+                    acs_layout = "table"
+                    break
+                except RateLimitedError:
+                    raise
+                except DownloadError as e:
+                    bootstrap_errors.append(f"table: {e}")
+
+                try:
                     bootstrap_status = fetch_lookup_file(
                         acs_year,
                         lookup_dest,
@@ -1131,7 +1192,16 @@ def main() -> int:
                         max_attempts=args.max_attempts,
                         progress_prefix="[1/?]",
                     )
-                break
+                    acs_layout = "sequence"
+                    break
+                except RateLimitedError:
+                    raise
+                except DownloadError as e:
+                    bootstrap_errors.append(f"sequence: {e}")
+                    raise DownloadError(
+                        f"No supported ACS layout found for {year}. "
+                        + " | ".join(bootstrap_errors)
+                    )
             except RateLimitedError:
                 raise
             except DownloadError as e:

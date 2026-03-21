@@ -3,6 +3,7 @@ import csv
 import difflib
 import heapq
 import logging
+import math
 import operator
 import re
 import sys
@@ -364,6 +365,21 @@ class Engine:
             return self._build_united_states_profile()
         raise ValueError(f"No geography found for display label: {display_label}")
 
+    def _fetch_profile_by_name(self, display_label):
+        dp = self._dp_by_name.get(display_label)
+        if dp is not None:
+            return dp
+
+        if self._repo_supports("get_demographic_profile"):
+            try:
+                dp = self.primary_repository.get_demographic_profile(display_label)
+                if dp is not None:
+                    return dp
+            except RuntimeError:
+                pass
+
+        return self._lookup_dp(display_label)
+
     def resolve_geography(self, query, state=None, sumlevel=None, population=None, n=5, **kwargs):
         """Resolve an input geography string to likely canonical matches."""
         self.get_data_products()
@@ -381,8 +397,28 @@ class Engine:
             raise ValueError(f"No geography found for display label: {display_label}")
         return gv
 
+    def _identifier_probe_profile(self):
+        if self.d is not None:
+            demographicprofiles = self.d.get("demographicprofiles", [])
+            if demographicprofiles:
+                return demographicprofiles[0]
+
+        if self._repo_supports("get_any_demographic_profile"):
+            try:
+                dp = self.primary_repository.get_any_demographic_profile()
+                if dp is not None:
+                    return dp
+            except RuntimeError:
+                pass
+
+        d = self.get_data_products()
+        demographicprofiles = d.get("demographicprofiles", [])
+        if not demographicprofiles:
+            raise ValueError("No demographic profiles are available.")
+        return demographicprofiles[0]
+
     def _repo_supports(self, method_name):
-        return hasattr(self.primary_repository, method_name)
+        return hasattr(getattr(self, "primary_repository", None), method_name)
 
     def _get_county_geoid(self, state_abbrev):
         if re.match(r"^\d{5}:county$", state_abbrev):
@@ -423,7 +459,7 @@ class Engine:
         }
 
     def list_data_identifiers(self, fetch_one):
-        if hasattr(self, "d"):
+        if getattr(self, "d", None) is not None:
             self.get_data_products()
         if getattr(self, "_data_identifier_index", None):
             return sorted(self._data_identifier_index.keys())
@@ -437,7 +473,7 @@ class Engine:
         if not requested:
             raise ValueError("Missing data identifier.")
 
-        if hasattr(self, "d"):
+        if getattr(self, "d", None) is not None:
             self.get_data_products()
         if requested in getattr(self, "_data_identifier_index", {}):
             return self._data_identifier_index[requested]
@@ -584,16 +620,15 @@ class Engine:
         self, data_identifier, context="", geofilter="", n=10, lowest=False, **kwargs
     ):
         """Get highest and lowest values."""
-        d = self.get_data_products()
-
-        dpi_instances = d["demographicprofiles"]
-        fetch_one = dpi_instances[0]
+        fetch_one = self._identifier_probe_profile()
 
         resolved = self.resolve_data_identifier(data_identifier, fetch_one)
         key = resolved["key"]
         sort_by = resolved["store"]
         if n <= 0:
-            n = len(dpi_instances)
+            if self.d is None:
+                self.get_data_products()
+            n = len(self.d["demographicprofiles"])
 
         if self._repo_supports("query_extreme_profile_names"):
             sql_params = self._build_sql_query_params(context, geofilter, fetch_one)
@@ -614,9 +649,12 @@ class Engine:
                     lowest=lowest,
                     exclude_values=exclude_values,
                 )
-                return [self._lookup_dp(name) for name in names]
+                return [self._fetch_profile_by_name(name) for name in names]
             except RuntimeError:
                 pass
+
+        d = self.get_data_products()
+        dpi_instances = d["demographicprofiles"]
 
         # Remove numpy.nans because they interfere with sorted()
         dpi_instances = list(
@@ -662,12 +700,7 @@ class Engine:
         **kwargs,
     ):
         """Rank geographies by distance to the nearest geography across a threshold."""
-        d = self.get_data_products()
-        dpi_instances = d["demographicprofiles"]
-        if not dpi_instances:
-            return []
-
-        fetch_one = dpi_instances[0]
+        fetch_one = self._identifier_probe_profile()
         resolved = self.resolve_data_identifier(data_identifier, fetch_one)
         key = resolved["key"]
         store = resolved["store"]
@@ -677,6 +710,27 @@ class Engine:
             raise ValueError("target must be either 'below' or 'above'.")
 
         if n <= 0:
+            return []
+
+        if self._repo_supports("query_profile_metric_rows"):
+            try:
+                sql_params = self._build_sql_query_params(context, geofilter, fetch_one)
+                rows = self.primary_repository.query_profile_metric_rows(
+                    comp_column=f"{store}_{key}",
+                    universe_sl=sql_params["universe_sl"],
+                    group_sl=sql_params["group_sl"],
+                    group=sql_params["group"],
+                    county_geoid=sql_params["county_geoid"],
+                    geofilter_conditions=sql_params["geofilter_conditions"],
+                )
+                if rows:
+                    return self._remoteness_from_rows(rows, threshold_value, target_key, store, key, n)
+            except RuntimeError:
+                pass
+
+        d = self.get_data_products()
+        dpi_instances = d["demographicprofiles"]
+        if not dpi_instances:
             return []
 
         filtered = self.context_filter(dpi_instances, context, geofilter)
@@ -738,6 +792,132 @@ class Engine:
 
         results.sort(key=lambda row: row["distance_miles"], reverse=True)
         return results[:n]
+
+    def _remoteness_from_rows(self, rows, threshold_value, target_key, store, key, n):
+        entries = []
+        for row in rows:
+            name, latitude, longitude, population, metric_value = row
+            if latitude is None or longitude is None or metric_value is None:
+                continue
+            entry = {
+                "name": name,
+                "latitude": float(latitude),
+                "longitude": float(longitude),
+                "population": 0 if population is None else float(population),
+                "metric_value": float(metric_value),
+            }
+            entries.append(entry)
+
+        if not entries:
+            raise ValueError("Sorry, no geographies match your criteria.")
+
+        if target_key == "below":
+            candidates = [entry for entry in entries if entry["metric_value"] >= threshold_value]
+            qualifying = [entry for entry in entries if entry["metric_value"] < threshold_value]
+        else:
+            candidates = [entry for entry in entries if entry["metric_value"] <= threshold_value]
+            qualifying = [entry for entry in entries if entry["metric_value"] > threshold_value]
+
+        if not candidates:
+            raise ValueError("Sorry, no candidate geographies remain on the opposite side of the threshold.")
+        if not qualifying:
+            raise ValueError("Sorry, no qualifying geographies remain for the requested threshold.")
+
+        qualifying_names = {entry["name"] for entry in qualifying}
+        grid = self._build_spatial_grid(qualifying)
+        results = []
+        dp_cache = {}
+
+        for candidate in candidates:
+            nearest, nearest_distance = self._nearest_qualifying_entry(candidate, grid, qualifying_names)
+            if nearest is None or nearest_distance is None:
+                continue
+
+            candidate_dp = dp_cache.get(candidate["name"])
+            if candidate_dp is None:
+                candidate_dp = self._fetch_profile_by_name(candidate["name"])
+                dp_cache[candidate["name"]] = candidate_dp
+            nearest_dp = dp_cache.get(nearest["name"])
+            if nearest_dp is None:
+                nearest_dp = self._fetch_profile_by_name(nearest["name"])
+                dp_cache[nearest["name"]] = nearest_dp
+
+            results.append(
+                {
+                    "candidate": candidate_dp,
+                    "candidate_value": getattr(candidate_dp, store)[key],
+                    "nearest_match": nearest_dp,
+                    "nearest_match_value": getattr(nearest_dp, store)[key],
+                    "distance_miles": nearest_distance,
+                }
+            )
+
+        results.sort(key=lambda row: row["distance_miles"], reverse=True)
+        return results[:n]
+
+    def _build_spatial_grid(self, entries, cell_degrees=0.5):
+        grid = {"cell_degrees": cell_degrees, "buckets": {}}
+        for entry in entries:
+            key = (
+                math.floor(entry["latitude"] / cell_degrees),
+                math.floor(entry["longitude"] / cell_degrees),
+            )
+            grid["buckets"].setdefault(key, []).append(entry)
+        return grid
+
+    def _nearest_qualifying_entry(self, candidate, grid, qualifying_names):
+        cell_degrees = grid["cell_degrees"]
+        buckets = grid["buckets"]
+        lat = candidate["latitude"]
+        lon = candidate["longitude"]
+        cell = (
+            math.floor(lat / cell_degrees),
+            math.floor(lon / cell_degrees),
+        )
+
+        best_entry = None
+        best_distance = None
+        radius = 0
+
+        while radius <= 720:
+            for dlat in range(-radius, radius + 1):
+                for dlon in range(-radius, radius + 1):
+                    if radius and max(abs(dlat), abs(dlon)) != radius:
+                        continue
+                    for entry in buckets.get((cell[0] + dlat, cell[1] + dlon), []):
+                        if entry["name"] == candidate["name"] and entry["name"] in qualifying_names:
+                            continue
+                        distance = self._haversine_miles(
+                            lat,
+                            lon,
+                            entry["latitude"],
+                            entry["longitude"],
+                        )
+                        if best_distance is None or distance < best_distance:
+                            best_entry = entry
+                            best_distance = distance
+
+            if best_distance is not None:
+                lower_bound = self._grid_outer_ring_lower_bound(lat, lon, cell, radius, cell_degrees)
+                if best_distance <= lower_bound:
+                    return best_entry, best_distance
+
+            radius += 1
+
+        return best_entry, best_distance
+
+    def _grid_outer_ring_lower_bound(self, latitude, longitude, cell, radius, cell_degrees):
+        lower_lat = (cell[0] - radius) * cell_degrees
+        upper_lat = (cell[0] + radius + 1) * cell_degrees
+        lower_lon = (cell[1] - radius) * cell_degrees
+        upper_lon = (cell[1] + radius + 1) * cell_degrees
+
+        lat_gap = min(abs(latitude - lower_lat), abs(upper_lat - latitude))
+        lon_gap = min(abs(longitude - lower_lon), abs(upper_lon - longitude))
+
+        lat_miles = lat_gap * 69.0
+        lon_miles = lon_gap * 69.0 * max(0.2, cos(radians(latitude)))
+        return min(lat_miles, lon_miles)
 
     def display_label_search(self, query, n=10, **kwargs):
         """Search display labels (place names)."""

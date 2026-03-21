@@ -24,6 +24,9 @@ class PlaceIdentityIndex:
             geoid = getattr(dp, "geoid", None)
             canonical_id = f"census:{geoid}" if geoid else f"name:{cls.normalize_name(dp.name)}"
             alias_values = [dp.name]
+            canonical_name = getattr(dp, "canonical_name", None)
+            if canonical_name:
+                alias_values.append(canonical_name)
             if geoid:
                 alias_values.extend([geoid, geoid.split("US", 1)[1] if "US" in geoid else geoid])
 
@@ -37,6 +40,7 @@ class PlaceIdentityIndex:
                     {
                         "canonical_id": canonical_id,
                         "name": dp.name,
+                        "canonical_name": canonical_name,
                         "norm_name": norm_name,
                         "state": dp.state,
                         "sumlevel": dp.sumlevel,

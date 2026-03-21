@@ -12,6 +12,7 @@ def _profile(name, population, income, latitude, longitude):
         sumlevel="140",
         state="ca",
         counties=["06075"],
+        geoid=f"1400000US06075{name[-1] if name[-1].isdigit() else '000000'}",
         rc={
             "population": population,
             "median_household_income": income,
