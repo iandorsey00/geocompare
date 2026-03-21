@@ -27,3 +27,20 @@ def test_resolve_prefers_state_match():
 
     result = idx.resolve("Springfield", state="mo", limit=1)
     assert result[0]["state"] == "mo"
+
+
+def test_resolve_supports_tract_geoid_alias():
+    idx = PlaceIdentityIndex.from_demographic_profiles(
+        [
+            _dp(
+                "Census Tract 601, San Francisco County, California",
+                "ca",
+                "140",
+                "14000US06075060100",
+                4500,
+            )
+        ]
+    )
+
+    result = idx.resolve("06075060100", sumlevel="140", limit=1)
+    assert result[0]["geoid"] == "14000US06075060100"

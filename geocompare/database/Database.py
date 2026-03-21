@@ -130,6 +130,55 @@ class Database:
         delimiter = "|" if "|" in header_line else "\t"
         return list(pd.read_csv(place_path, sep=delimiter, nrows=1, dtype="str").columns)
 
+    def normalize_tract_gazetteer_rows(self, rows):
+        """Normalize tract gazetteer rows to the place-gazetteer shape."""
+        normalized_rows = []
+        for row in rows:
+            if not row:
+                continue
+
+            if row[0] == "GEOID":
+                normalized_rows.append(
+                    [
+                        "USPS",
+                        "GEOID",
+                        "GEOIDFQ",
+                        "ANSICODE",
+                        "NAME",
+                        "LSAD",
+                        "FUNCSTAT",
+                        "ALAND",
+                        "AWATER",
+                        "ALAND_SQMI",
+                        "AWATER_SQMI",
+                        "INTPTLAT",
+                        "INTPTLONG",
+                    ]
+                )
+                continue
+
+            padded = list(row) + [""] * max(0, 10 - len(row))
+            geoid = padded[0]
+            normalized_rows.append(
+                [
+                    "US",
+                    f"14000US{geoid}" if "US" not in geoid else geoid,
+                    f"14000US{geoid}" if "US" not in geoid else geoid,
+                    "",
+                    "",
+                    "",
+                    "",
+                    padded[1],
+                    padded[2],
+                    padded[3],
+                    padded[4],
+                    padded[5],
+                    padded[6],
+                ]
+            )
+
+        return normalized_rows
+
     def get_state_gazetteer_path(self, gh_year, path):
         """Resolve the state gazetteer file path with backward compatibility."""
         candidates = [
@@ -1194,11 +1243,12 @@ class Database:
         # 010 = United States
         # 040 = State
         # 050 = State-County
+        # 140 = Census tract
         # 160 = State-Place
         # 310 = Metro/Micro Area
         # 400 = Urban Area
         # 860 = ZCTA
-        allowed_sumlevels = {"010", "160", "050", "040", "860", "310", "400"}
+        allowed_sumlevels = {"010", "040", "050", "140", "160", "310", "400", "860"}
 
         def _keep_geography_row(row):
             sumlevel = row[1]
@@ -1254,6 +1304,10 @@ class Database:
         # Get rows for counties (050) from CSV
         this_path = self.data_dir / f"{self.gh_year}_Gaz_counties_national.txt"
         c_rows = self._read_gaz_rows(this_path)
+
+        # Get rows for tracts (140) from CSV
+        this_path = self.data_dir / f"{self.gh_year}_Gaz_tracts_national.txt"
+        t_rows = self.normalize_tract_gazetteer_rows(self._read_gaz_rows(this_path))
 
         # County geoheaders lack two columns that places have, so insert
         # them as empty strings.
@@ -1363,6 +1417,7 @@ class Database:
         complete_geoids("160", rows)
         complete_geoids("040", s_rows)
         complete_geoids("050", c_rows)
+        complete_geoids("140", t_rows)
         complete_geoids("310", cbsa_rows)
         complete_geoids("400", ua_rows)
         complete_geoids("860", z_rows)
@@ -1419,7 +1474,7 @@ class Database:
             rows.append(us_row)
 
         # Merge rows together
-        rows = rows + c_rows + s_rows + z_rows + ua_rows + cbsa_rows
+        rows = rows + c_rows + t_rows + s_rows + z_rows + ua_rows + cbsa_rows
 
         for row in rows:
             row[-1] = row[-1].strip()

@@ -21,20 +21,29 @@ class PlaceIdentityIndex:
     def from_demographic_profiles(cls, demographic_profiles):
         entries = []
         for dp in demographic_profiles:
-            norm_name = cls.normalize_name(dp.name)
             geoid = getattr(dp, "geoid", None)
-            canonical_id = f"census:{geoid}" if geoid else f"name:{norm_name}"
-            entries.append(
-                {
-                    "canonical_id": canonical_id,
-                    "name": dp.name,
-                    "norm_name": norm_name,
-                    "state": dp.state,
-                    "sumlevel": dp.sumlevel,
-                    "population": dp.rc.get("population") if hasattr(dp, "rc") else None,
-                    "geoid": geoid,
-                }
-            )
+            canonical_id = f"census:{geoid}" if geoid else f"name:{cls.normalize_name(dp.name)}"
+            alias_values = [dp.name]
+            if geoid:
+                alias_values.extend([geoid, geoid.split("US", 1)[1] if "US" in geoid else geoid])
+
+            seen_norms = set()
+            for alias in alias_values:
+                norm_name = cls.normalize_name(alias)
+                if not norm_name or norm_name in seen_norms:
+                    continue
+                seen_norms.add(norm_name)
+                entries.append(
+                    {
+                        "canonical_id": canonical_id,
+                        "name": dp.name,
+                        "norm_name": norm_name,
+                        "state": dp.state,
+                        "sumlevel": dp.sumlevel,
+                        "population": dp.rc.get("population") if hasattr(dp, "rc") else None,
+                        "geoid": geoid,
+                    }
+                )
 
         return cls(entries)
 
@@ -53,6 +62,8 @@ class PlaceIdentityIndex:
             value = value.split(",")[0]
 
         for token in [
+            " census tract",
+            " tract",
             " city",
             " town",
             " village",

@@ -120,6 +120,7 @@ DEFAULT_STATES = [
 GAZ_FILES = [
     "{year}_Gaz_place_national.txt",
     "{year}_Gaz_counties_national.txt",
+    "{year}_Gaz_tracts_national.txt",
     "{year}_Gaz_state_national.txt",
     "{year}_Gaz_cbsa_national.txt",
     "{year}_Gaz_ua_national.txt",

@@ -651,6 +651,94 @@ class Engine:
             lowest=True,
         )
 
+    def remoteness(
+        self,
+        data_identifier,
+        threshold,
+        target="below",
+        context="tracts+",
+        geofilter="",
+        n=10,
+        **kwargs,
+    ):
+        """Rank geographies by distance to the nearest geography across a threshold."""
+        d = self.get_data_products()
+        dpi_instances = d["demographicprofiles"]
+        if not dpi_instances:
+            return []
+
+        fetch_one = dpi_instances[0]
+        resolved = self.resolve_data_identifier(data_identifier, fetch_one)
+        key = resolved["key"]
+        store = resolved["store"]
+        threshold_value = parse_number(threshold)
+        target_key = str(target or "below").strip().lower()
+        if target_key not in {"below", "above"}:
+            raise ValueError("target must be either 'below' or 'above'.")
+
+        if n <= 0:
+            return []
+
+        filtered = self.context_filter(dpi_instances, context, geofilter)
+        filtered = [
+            dp
+            for dp in filtered
+            if key in getattr(dp, store)
+            and not numpy.isnan(getattr(dp, store)[key])
+            and dp.rc.get("latitude") is not None
+            and dp.rc.get("longitude") is not None
+        ]
+        if not filtered:
+            raise ValueError("Sorry, no geographies match your criteria.")
+
+        if target_key == "below":
+            candidates = [dp for dp in filtered if getattr(dp, store)[key] >= threshold_value]
+            qualifying = [dp for dp in filtered if getattr(dp, store)[key] < threshold_value]
+        else:
+            candidates = [dp for dp in filtered if getattr(dp, store)[key] <= threshold_value]
+            qualifying = [dp for dp in filtered if getattr(dp, store)[key] > threshold_value]
+
+        if not candidates:
+            raise ValueError("Sorry, no candidate geographies remain on the opposite side of the threshold.")
+        if not qualifying:
+            raise ValueError("Sorry, no qualifying geographies remain for the requested threshold.")
+
+        results = []
+        for candidate in candidates:
+            candidate_lat = candidate.rc["latitude"]
+            candidate_lon = candidate.rc["longitude"]
+            nearest = None
+            nearest_distance = None
+
+            for match in qualifying:
+                if match.name == candidate.name:
+                    continue
+                distance = self._haversine_miles(
+                    candidate_lat,
+                    candidate_lon,
+                    match.rc["latitude"],
+                    match.rc["longitude"],
+                )
+                if nearest_distance is None or distance < nearest_distance:
+                    nearest = match
+                    nearest_distance = distance
+
+            if nearest is None or nearest_distance is None:
+                continue
+
+            results.append(
+                {
+                    "candidate": candidate,
+                    "candidate_value": getattr(candidate, store)[key],
+                    "nearest_match": nearest,
+                    "nearest_match_value": getattr(nearest, store)[key],
+                    "distance_miles": nearest_distance,
+                }
+            )
+
+        results.sort(key=lambda row: row["distance_miles"], reverse=True)
+        return results[:n]
+
     def display_label_search(self, query, n=10, **kwargs):
         """Search display labels (place names)."""
         if n <= 0:

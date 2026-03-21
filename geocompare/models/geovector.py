@@ -6,13 +6,16 @@ for demographic data.
 '''
 
 
-from geocompare.tools.county_lookup import CountyLookup
+from geocompare.tools.geography_names import (
+    county_display_names,
+    county_geoids_for_geography,
+    tract_display_name_from_geoid,
+)
 from geocompare.tools.numeric import parse_float, parse_int, safe_divide
 
 
 class GeoVector:
     '''A vector used to compare places with others.'''
-    _ct = CountyLookup()
 
     def __init__(
         self,
@@ -26,20 +29,11 @@ class GeoVector:
         self.geoid = db_row['GEOID']
         self.name = db_row['NAME']
 
-        # County lookup instance and county data
-        ct = self._ct
-        self.counties = []
-        self.counties_display = []
+        if self.sumlevel == '140':
+            self.name = tract_display_name_from_geoid(self.geoid)
 
-        if self.sumlevel == '160':
-            geoid_suffix = self.geoid.split('US', 1)[1] if 'US' in self.geoid else self.geoid[7:]
-            # County GEOIDs
-            self.counties = ct.place_to_counties.get(geoid_suffix, [])
-            # County names (without the state)
-            self.counties_display = list(map(lambda x: ct.county_geoid_to_name[x],
-                                        self.counties))
-            self.counties_display = list(map(lambda x: x.split(', ')[0],
-                                        self.counties_display))
+        self.counties = county_geoids_for_geography(self.geoid, self.sumlevel)
+        self.counties_display = county_display_names(self.counties)
 
         # Data - All data handled by GeoVectors
         self.d = dict()
@@ -300,8 +294,7 @@ class GeoVector:
 
         # Print the display_label for the geo
         out_str = self.name.ljust(40)[:40] + iam
-        # If the geo is a place, print the county/ies
-        if self.sumlevel == '160':
+        if self.counties_display:
             out_str += ', '.join(self.counties_display).ljust(20)[:20] + iam
         else:
             out_str += ' '.ljust(20)[:20] + iam

@@ -55,7 +55,7 @@ class GeoCompareCLI:
             required=True,
         )
 
-        search_parser = query_subparsers.add_parser("search", help="search place names")
+        search_parser = query_subparsers.add_parser("search", help="search geography names")
         search_parser.add_argument("query", help="search query")
         search_parser.add_argument("-n", type=int, default=15, help="number of results to display")
         search_parser.add_argument(
@@ -70,7 +70,7 @@ class GeoCompareCLI:
         search_parser.set_defaults(func=self.display_label_search)
 
         profile_parser = query_subparsers.add_parser("profile", help="show one demographic profile")
-        profile_parser.add_argument("display_label", help="the exact place name")
+        profile_parser.add_argument("display_label", help="the exact geography name")
         profile_parser.add_argument(
             "--profile-view",
             choices=["compact", "full"],
@@ -83,7 +83,7 @@ class GeoCompareCLI:
             "profile-compare", help="compare multiple demographic profiles line by line"
         )
         profile_compare_parser.add_argument(
-            "display_labels", nargs="+", help="two or more exact place names"
+            "display_labels", nargs="+", help="two or more exact geography names"
         )
         profile_compare_parser.add_argument(
             "--profile-view",
@@ -94,7 +94,7 @@ class GeoCompareCLI:
         profile_compare_parser.set_defaults(func=self.profile_compare)
 
         similar_parser = query_subparsers.add_parser("similar", help="show nearest geovectors")
-        similar_parser.add_argument("display_label", help="the exact place name")
+        similar_parser.add_argument("display_label", help="the exact geography name")
         self._add_context_args(similar_parser)
         similar_parser.add_argument("-n", type=int, default=15, help="number of rows to display")
         similar_parser.set_defaults(func=self.compare_geovectors)
@@ -102,7 +102,7 @@ class GeoCompareCLI:
         similar_app_parser = query_subparsers.add_parser(
             "similar-app", help="show nearest geovectors (appearance mode)"
         )
-        similar_app_parser.add_argument("display_label", help="the exact place name")
+        similar_app_parser.add_argument("display_label", help="the exact geography name")
         self._add_context_args(similar_app_parser)
         similar_app_parser.add_argument(
             "-n", type=int, default=15, help="number of rows to display"
@@ -124,24 +124,43 @@ class GeoCompareCLI:
         nearest_parser = query_subparsers.add_parser(
             "nearest", help="show closest geographies by distance"
         )
-        nearest_parser.add_argument("display_label", help="the exact place name")
+        nearest_parser.add_argument("display_label", help="the exact geography name")
         self._add_filter_arg(nearest_parser)
         self._add_context_args(nearest_parser)
         nearest_parser.add_argument("-n", type=int, default=15, help="number of rows to display")
         nearest_parser.set_defaults(func=self.closest_geographies)
 
-        dist_parser = query_subparsers.add_parser("distance", help="distance between two places")
-        dist_parser.add_argument("display_label_1", help="first place")
-        dist_parser.add_argument("display_label_2", help="second place")
+        remoteness_parser = query_subparsers.add_parser(
+            "remoteness",
+            help="rank geographies by distance to the nearest geography across a threshold",
+        )
+        remoteness_parser.add_argument("data_identifier", help="metric used for the threshold split")
+        remoteness_parser.add_argument("threshold", help="numeric threshold for the metric")
+        remoteness_parser.add_argument(
+            "--target",
+            choices=["below", "above"],
+            default="below",
+            help="which side of the threshold counts as the qualifying destination",
+        )
+        self._add_filter_arg(remoteness_parser)
+        self._add_context_args(remoteness_parser)
+        remoteness_parser.add_argument(
+            "-n", type=int, default=15, help="number of rows to display"
+        )
+        remoteness_parser.set_defaults(func=self.remoteness)
+
+        dist_parser = query_subparsers.add_parser("distance", help="distance between two geographies")
+        dist_parser.add_argument("display_label_1", help="first geography")
+        dist_parser.add_argument("display_label_2", help="second geography")
         dist_parser.add_argument(
             "-k", "--kilometers", action="store_true", help="display result in kilometers"
         )
         dist_parser.set_defaults(func=self.distance)
 
         resolve_parser = subparsers.add_parser(
-            "resolve", help="resolve a place string to canonical IDs"
+            "resolve", help="resolve a geography string to canonical IDs"
         )
-        resolve_parser.add_argument("query", help="input place string to resolve")
+        resolve_parser.add_argument("query", help="input geography string to resolve")
         resolve_parser.add_argument("--state", help="optional state filter, e.g. ca")
         resolve_parser.add_argument("--sumlevel", help="optional summary level filter, e.g. 160")
         resolve_parser.add_argument("--population", type=int, help="optional population hint")
@@ -178,7 +197,7 @@ class GeoCompareCLI:
         export_profile_parser = export_subparsers.add_parser(
             "profile", help="export one demographic profile to CSV"
         )
-        export_profile_parser.add_argument("display_label", help="the exact place name")
+        export_profile_parser.add_argument("display_label", help="the exact geography name")
         export_profile_parser.add_argument(
             "--profile-view",
             choices=["compact", "full"],
@@ -213,11 +232,11 @@ class GeoCompareCLI:
             "-s",
             "--scope",
             dest="context",
-            help="scope string (for example: places+ca, 050+06075:county, 94103)",
+            help="scope string (for example: tracts+ca, 140+06075:county, 94103)",
         )
         parser.add_argument(
             "--universe",
-            help="universe summary level (for example: places/counties/states or 160/050/040)",
+            help="universe summary level (for example: tracts/places/counties or 140/160/050)",
         )
         scope_group = parser.add_mutually_exclusive_group()
         scope_group.add_argument("--in-state", help="group scope by state abbreviation")
@@ -324,7 +343,7 @@ class GeoCompareCLI:
 
     def profile_compare(self, args):
         if len(args.display_labels) < 2:
-            self._eprint("Please provide at least two place names to compare.")
+            self._eprint("Please provide at least two geography names to compare.")
             return
 
         dps = []
@@ -685,6 +704,53 @@ class GeoCompareCLI:
 
     def distance(self, args):
         print(self.engine.distance(**vars(args)))
+
+    def remoteness(self, args):
+        self._normalize_scope_args(args)
+        if not args.context:
+            args.context = "tracts+"
+        try:
+            results = self.engine.remoteness(**vars(args))
+        except ValueError as exc:
+            self._eprint(str(exc))
+            return
+
+        if len(results) == 0:
+            self._eprint("Sorry, no geographies match your criteria.")
+            return
+
+        fetch_one = results[0]["candidate"]
+        resolved = self.engine.resolve_data_identifier(args.data_identifier, fetch_one)
+        display_store = resolved["display_store"]
+        key = resolved["key"]
+
+        def metric_value(dp):
+            return getattr(dp, display_store)[key]
+
+        width = 126
+        print("-" * width)
+        print(
+            " Candidate".ljust(45)
+            + " Population".rjust(12)
+            + " Metric".rjust(16)
+            + " Nearest qualifying geography".rjust(32)
+            + " Distance".rjust(11)
+            + " Match".rjust(10)
+        )
+        print("-" * width)
+        for row in results:
+            candidate = row["candidate"]
+            nearest = row["nearest_match"]
+            print(
+                " "
+                + candidate.name.ljust(44)[:44]
+                + candidate.fc["population"].rjust(12)
+                + metric_value(candidate).rjust(16)[:16]
+                + nearest.name.rjust(32)[:32]
+                + f"{row['distance_miles']:.1f}".rjust(11)
+                + metric_value(nearest).rjust(10)[:10]
+            )
+        print("-" * width)
 
     def rows(self, args):
         self._normalize_scope_args(args)

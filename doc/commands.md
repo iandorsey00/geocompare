@@ -64,6 +64,13 @@ geocompare query bottom median_year_structure_built --universe places --in-state
 geocompare query nearest "ZCTA5 94104" --universe places -n 15
 ```
 
+### Remoteness
+
+```bash
+geocompare query remoteness median_household_income 75000 --universe tracts --where "population>=2500"
+geocompare query remoteness per_capita_income 35000 --target above --scope "tracts+ca" -n 20
+```
+
 ### Distance
 
 ```bash

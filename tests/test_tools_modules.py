@@ -38,7 +38,9 @@ def test_key_tools_summary_level_and_maps():
 def test_summary_level_tools_unpack_context():
     slt = SummaryLevelParser()
     assert slt.unpack_context("places+ca") == ("160", "040", "ca")
+    assert slt.unpack_context("tracts+ca") == ("140", "040", "ca")
     assert slt.unpack_context("160+ca") == ("160", "040", "ca")
+    assert slt.unpack_context("140+06075:county") == ("140", "050", "06075:county")
     assert slt.unpack_context("160+06075:county") == ("160", "050", "06075:county")
     assert slt.unpack_context("94103") == (None, "860", "94103")
 

@@ -7,13 +7,16 @@ import csv
 import sys
 import textwrap
 
-from geocompare.tools.county_lookup import CountyLookup
 from geocompare.tools.numeric import parse_float, parse_number
+from geocompare.tools.geography_names import (
+    county_display_names,
+    county_geoids_for_geography,
+    tract_display_name_from_geoid,
+)
 
 
 class DemographicProfile:
     '''Used to display data for a geography.'''
-    _ct = CountyLookup()
 
     def __init__(self, db_row):
 
@@ -23,20 +26,11 @@ class DemographicProfile:
         self.sumlevel = db_row['SUMLEVEL']
         # self.key = db_row['KEY']
 
-        # County lookup instance and county data
-        ct = self._ct
-        # County GEOIDs
-        if self.sumlevel == '160': # Place
-            geoid_suffix = self.geoid.split('US', 1)[1] if 'US' in self.geoid else self.geoid[7:]
-            self.counties = ct.place_to_counties.get(geoid_suffix, [])
-            # County names (without the state)
-            self.counties_display = list(map(lambda x: ct.county_geoid_to_name[x],
-                                    self.counties))
-            self.counties_display = list(map(lambda x: x.split(', ')[0],
-                                    self.counties_display))
-        else:
-            self.counties = []
-            self.counties_display = []
+        if self.sumlevel == '140':
+            self.name = tract_display_name_from_geoid(self.geoid)
+
+        self.counties = county_geoids_for_geography(self.geoid, self.sumlevel)
+        self.counties_display = county_display_names(self.counties)
 
         #######################################################################
         # Row labels - Formatted names for each type of data
@@ -530,8 +524,7 @@ class DemographicProfile:
 
         csv_dp_full_row_str(self.name)
 
-        # Print counties if this DemographicProfile is for a place (160)
-        if self.sumlevel == '160':
+        if self.counties_display:
             csv_dp_full_row_str(', '.join(self.counties_display))
 
         csv_divider()
@@ -555,8 +548,7 @@ class DemographicProfile:
         out_str  = self.divider()
         out_str += self.dp_full_row_str(self.name)
 
-        # Print counties if this DemographicProfile is for a place (160)
-        if self.sumlevel == '160':
+        if self.counties_display:
             out_str += self.dp_full_row_str(', '.join(self.counties_display))
 
         out_str += self.divider()
