@@ -26,6 +26,7 @@ import csv
 import random
 import re
 import shutil
+import signal
 import sys
 import time
 import zipfile
@@ -201,8 +202,30 @@ class RateLimitedError(DownloadError):
     pass
 
 
+class UserCancelledError(DownloadError):
+    pass
+
+
+_INTERRUPTED = False
+
+
 def log(msg: str) -> None:
     print(msg, flush=True)
+
+
+def install_signal_handlers() -> None:
+    def _handle_interrupt(signum, frame):
+        del signum, frame
+        global _INTERRUPTED
+        _INTERRUPTED = True
+        raise KeyboardInterrupt
+
+    signal.signal(signal.SIGINT, _handle_interrupt)
+
+
+def check_cancelled() -> None:
+    if _INTERRUPTED:
+        raise UserCancelledError("Cancelled by user.")
 
 
 def _is_rate_limited_text(text: str) -> bool:
@@ -228,6 +251,7 @@ def _raise_if_rate_limited_http_error(err: HTTPError) -> None:
 def fetch_text(url: str, timeout: int = 30, max_attempts: int = 3) -> str:
     last_error: Exception | None = None
     for attempt in range(1, max_attempts + 1):
+        check_cancelled()
         try:
             req = Request(url, headers={"User-Agent": USER_AGENT})
             with urlopen(req, timeout=timeout) as resp:
@@ -256,6 +280,7 @@ def fetch_text(url: str, timeout: int = 30, max_attempts: int = 3) -> str:
 def url_exists(url: str, timeout: int = 20, max_attempts: int = 2) -> bool:
     for method in ("HEAD", "GET"):
         for attempt in range(1, max_attempts + 1):
+            check_cancelled()
             try:
                 req = Request(url, headers={"User-Agent": USER_AGENT}, method=method)
                 with urlopen(req, timeout=timeout) as resp:
@@ -291,16 +316,11 @@ def discover_latest_acs_year() -> str:
     except Exception:
         pass
 
-    # Fallback: probe recent years directly for known ACS paths.
+    # Fallback: probe recent years directly for usable ACS layouts.
     current = time.gmtime().tm_year
     for year in range(current + 1, current - 15, -1):
-        base = f"{ACS_ROOT}{year}/"
-        candidates = [
-            urljoin(base, "data/5_year_seq_by_state/"),
-            urljoin(base, "documentation/tech_docs/"),
-            urljoin(base, "documentation/user_tools/"),
-        ]
-        if any(url_exists(url) for url in candidates):
+        check_cancelled()
+        if detect_acs_layout_for_year(year) is not None:
             years.add(year)
 
     if years:
@@ -416,17 +436,18 @@ def parse_lookup_sequence_numbers(lookup_path: Path, required_table_ids: set[str
     return sorted(sequences)
 
 
-def progress_line(name: str, downloaded: int, total: int | None) -> str:
+def progress_line(name: str, downloaded: int, total: int | None, prefix: str = "") -> str:
     width = 28
+    prefix_text = f"{prefix} " if prefix else ""
     if not total or total <= 0:
         mb = downloaded / (1024 * 1024)
-        return f"{name:<34} {mb:8.1f} MB"
+        return f"{prefix_text}{name:<34} {mb:8.1f} MB"
 
     frac = min(1.0, downloaded / total)
     filled = int(width * frac)
     bar = "#" * filled + "-" * (width - filled)
     pct = frac * 100.0
-    return f"{name:<34} [{bar}] {pct:6.2f}%"
+    return f"{prefix_text}{name:<34} [{bar}] {pct:6.2f}%"
 
 
 def download_file(
@@ -438,6 +459,7 @@ def download_file(
     dry_run: bool,
     timeout: int,
     max_attempts: int,
+    progress_prefix: str = "",
 ) -> str:
     dest.parent.mkdir(parents=True, exist_ok=True)
     if dest.exists() and not overwrite:
@@ -456,6 +478,7 @@ def download_file(
 
     last_error: Exception | None = None
     for attempt in range(1, max_attempts + 1):
+        check_cancelled()
         req = Request(url, headers=headers)
         try:
             with urlopen(req, timeout=timeout) as resp:
@@ -484,6 +507,7 @@ def download_file(
 
                 with part.open(mode) as out:
                     while True:
+                        check_cancelled()
                         chunk = resp.read(CHUNK_SIZE)
                         if not chunk:
                             break
@@ -498,11 +522,28 @@ def download_file(
                         downloaded += len(chunk)
                         now = time.time()
                         if now - last_update > 0.08:
-                            sys.stdout.write("\r" + progress_line(display_name, downloaded, total))
+                            sys.stdout.write(
+                                "\r"
+                                + progress_line(
+                                    display_name,
+                                    downloaded,
+                                    total,
+                                    prefix=progress_prefix,
+                                )
+                            )
                             sys.stdout.flush()
                             last_update = now
 
-                sys.stdout.write("\r" + progress_line(display_name, downloaded, total) + "\n")
+                sys.stdout.write(
+                    "\r"
+                    + progress_line(
+                        display_name,
+                        downloaded,
+                        total,
+                        prefix=progress_prefix,
+                    )
+                    + "\n"
+                )
                 sys.stdout.flush()
 
                 if part.exists():
@@ -522,6 +563,10 @@ def download_file(
                 time.sleep((2 ** (attempt - 1)) + random.uniform(0, 0.4))
                 continue
             break
+        except KeyboardInterrupt as e:
+            sys.stdout.write("\n")
+            sys.stdout.flush()
+            raise UserCancelledError(f"Cancelled while downloading {dest.name}.") from e
         except (URLError, TimeoutError) as e:
             last_error = e
             if attempt < max_attempts:
@@ -640,6 +685,7 @@ def fetch_lookup_file(
     dry_run: bool,
     timeout: int,
     max_attempts: int,
+    progress_prefix: str = "",
 ) -> str:
     try:
         lookup_url = find_lookup_url(acs_year)
@@ -651,6 +697,7 @@ def fetch_lookup_file(
             dry_run=dry_run,
             timeout=timeout,
             max_attempts=max_attempts,
+            progress_prefix=progress_prefix,
         )
     except RateLimitedError:
         raise
@@ -670,6 +717,7 @@ def fetch_lookup_file(
             dry_run=dry_run,
             timeout=timeout,
             max_attempts=max_attempts,
+            progress_prefix=progress_prefix,
         )
         if dry_run:
             return f"{zip_status} (lookup zip planned)"
@@ -699,6 +747,7 @@ def fetch_acs_geography_file(
     dry_run: bool,
     timeout: int,
     max_attempts: int,
+    progress_prefix: str = "",
 ) -> str:
     base = f"{ACS_ROOT}{acs_year}/"
     filename = f"g{acs_year}5{state}.csv"
@@ -717,6 +766,7 @@ def fetch_acs_geography_file(
             dry_run=dry_run,
             timeout=timeout,
             max_attempts=max_attempts,
+            progress_prefix=progress_prefix,
         )
     raise DownloadError(f"Could not locate geography file for {filename}")
 
@@ -732,6 +782,7 @@ def fetch_acs_estimate_file(
     dry_run: bool,
     timeout: int,
     max_attempts: int,
+    progress_prefix: str = "",
 ) -> str:
     base = f"{ACS_ROOT}{acs_year}/"
     txt_name = f"e{acs_year}5{state}{seq}000.txt"
@@ -745,6 +796,7 @@ def fetch_acs_estimate_file(
             dry_run=dry_run,
             timeout=timeout,
             max_attempts=max_attempts,
+            progress_prefix=progress_prefix,
         )
 
     state_dir = STATE_DIR_NAMES.get(state)
@@ -769,6 +821,7 @@ def fetch_acs_estimate_file(
         dry_run=dry_run,
         timeout=timeout,
         max_attempts=max_attempts,
+        progress_prefix=progress_prefix,
     )
     if dry_run:
         return f"{zip_status} (acs zip planned)"
@@ -787,6 +840,7 @@ def fetch_table_geography_file(
     dry_run: bool,
     timeout: int,
     max_attempts: int,
+    progress_prefix: str = "",
 ) -> str:
     base = f"{ACS_ROOT}{acs_year}/table-based-SF/"
     filename = f"Geos{acs_year}5YR.txt"
@@ -805,6 +859,7 @@ def fetch_table_geography_file(
             dry_run=dry_run,
             timeout=timeout,
             max_attempts=max_attempts,
+            progress_prefix=progress_prefix,
         )
     raise DownloadError(f"Could not locate table-based geography file {filename}")
 
@@ -819,6 +874,7 @@ def fetch_table_data_file(
     dry_run: bool,
     timeout: int,
     max_attempts: int,
+    progress_prefix: str = "",
 ) -> str:
     base = f"{ACS_ROOT}{acs_year}/table-based-SF/data/5YRData/"
     table_slug = table_id.lower()
@@ -838,6 +894,7 @@ def fetch_table_data_file(
             dry_run=dry_run,
             timeout=timeout,
             max_attempts=max_attempts,
+            progress_prefix=progress_prefix,
         )
     raise DownloadError(f"Could not locate table-based ACS file for {table_id}: {filename}")
 
@@ -925,6 +982,7 @@ def fetch_gazetteer_file(
     dry_run: bool,
     timeout: int,
     max_attempts: int,
+    progress_prefix: str = "",
 ) -> str:
     last_error = None
     for url, is_zip in gazetteer_source_candidates(gaz_year, txt_name):
@@ -938,6 +996,7 @@ def fetch_gazetteer_file(
                     dry_run=dry_run,
                     timeout=timeout,
                     max_attempts=max_attempts,
+                    progress_prefix=progress_prefix,
                 )
 
             zip_dest = dest.with_suffix(".zip")
@@ -949,6 +1008,7 @@ def fetch_gazetteer_file(
                 dry_run=dry_run,
                 timeout=timeout,
                 max_attempts=max_attempts,
+                progress_prefix=progress_prefix,
             )
             if dry_run:
                 return f"{zip_status} (zip planned)"
@@ -984,6 +1044,7 @@ def fetch_gazetteer_file(
 
 
 def main() -> int:
+    install_signal_handlers()
     parser = argparse.ArgumentParser(description="Fetch latest ACS + gazetteer data files.")
     parser.add_argument("--out-dir", default="../000-data", help="output directory (default: ../000-data)")
     parser.add_argument("--acs-year", help="ACS year to fetch (default: latest discovered)")
@@ -1057,6 +1118,7 @@ def main() -> int:
                         dry_run=args.dry_run,
                         timeout=args.timeout,
                         max_attempts=args.max_attempts,
+                        progress_prefix="[1/?]",
                     )
                 else:
                     bootstrap_status = fetch_lookup_file(
@@ -1067,6 +1129,7 @@ def main() -> int:
                         dry_run=args.dry_run,
                         timeout=args.timeout,
                         max_attempts=args.max_attempts,
+                        progress_prefix="[1/?]",
                     )
                 break
             except RateLimitedError:
@@ -1140,10 +1203,14 @@ def main() -> int:
         gaz_targets = [template.format(year=gaz_year) for template in GAZ_FILES]
 
         bootstrap_count = 1
-        log(
-            "files planned: "
-            f"{len(planned_geo) + len(planned_est) + len(planned_tables) + len(gaz_targets) + bootstrap_count}"
+        total_planned = (
+            len(planned_geo) + len(planned_est) + len(planned_tables) + len(gaz_targets) + bootstrap_count
         )
+        log(f"files planned: {total_planned}")
+        completed = bootstrap_count
+
+        def next_prefix() -> str:
+            return f"[{completed + 1}/{total_planned}]"
 
         failures = 0
         required_paths = [lookup_dest] if acs_layout == "sequence" else [geos_dest]
@@ -1159,14 +1226,17 @@ def main() -> int:
                         dry_run=args.dry_run,
                         timeout=args.timeout,
                         max_attempts=args.max_attempts,
+                        progress_prefix=next_prefix(),
                     )
                     if result != "exists":
                         log(f"{dest.name}: {result}")
                     required_paths.append(dest)
+                    completed += 1
                 except RateLimitedError:
                     raise
                 except DownloadError as e:
                     failures += 1
+                    completed += 1
                     log(f"ERROR: {e}")
 
             for state, seq, dest in planned_est:
@@ -1181,14 +1251,17 @@ def main() -> int:
                         dry_run=args.dry_run,
                         timeout=args.timeout,
                         max_attempts=args.max_attempts,
+                        progress_prefix=next_prefix(),
                     )
                     if result != "exists":
                         log(f"{dest.name}: {result}")
                     required_paths.append(dest)
+                    completed += 1
                 except RateLimitedError:
                     raise
                 except DownloadError as e:
                     failures += 1
+                    completed += 1
                     log(f"ERROR: {e}")
         else:
             for table_id, dest in planned_tables:
@@ -1202,14 +1275,17 @@ def main() -> int:
                         dry_run=args.dry_run,
                         timeout=args.timeout,
                         max_attempts=args.max_attempts,
+                        progress_prefix=next_prefix(),
                     )
                     if result != "exists":
                         log(f"{dest.name}: {result}")
                     required_paths.append(dest)
+                    completed += 1
                 except RateLimitedError:
                     raise
                 except DownloadError as e:
                     failures += 1
+                    completed += 1
                     log(f"ERROR: {e}")
 
         for txt_name in gaz_targets:
@@ -1231,6 +1307,7 @@ def main() -> int:
                             dry_run=args.dry_run,
                             timeout=args.timeout,
                             max_attempts=args.max_attempts,
+                            progress_prefix=next_prefix(),
                         )
                         if try_year != gaz_year and not args.dry_run:
                             # Normalize filename to the year actually fetched.
@@ -1246,10 +1323,12 @@ def main() -> int:
                 if result != "exists":
                     log(f"{dest.name}: {result}")
                 required_paths.append(dest)
+                completed += 1
             except RateLimitedError:
                 raise
             except DownloadError as e:
                 failures += 1
+                completed += 1
                 log(f"ERROR: {e}")
 
         if failures:
@@ -1263,6 +1342,12 @@ def main() -> int:
         log(f"ERROR: {e}")
         log("Stopping immediately to avoid further rate limiting. Try again later.")
         return 3
+    except UserCancelledError as e:
+        log(f"INFO: {e}")
+        return 130
+    except KeyboardInterrupt:
+        log("INFO: Cancelled by user.")
+        return 130
     except DownloadError as e:
         log(f"ERROR: {e}")
         return 2
