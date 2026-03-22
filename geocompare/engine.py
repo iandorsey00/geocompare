@@ -1467,7 +1467,7 @@ class Engine:
                     if latitude is None or longitude is None:
                         continue
                     distance = self._haversine_miles(target_lat, target_lon, latitude, longitude)
-                    dp_distances.append((self._lookup_dp(name), distance))
+                    dp_distances.append((self._fetch_profile_by_name(name), distance))
 
                 return heapq.nsmallest(n, dp_distances, key=lambda x: x[1])
             except RuntimeError:
