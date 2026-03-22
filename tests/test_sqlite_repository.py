@@ -5,9 +5,9 @@ from types import SimpleNamespace
 from geocompare.engine import Engine
 from geocompare.repository.serialization import dump_payload
 from geocompare.repository.sqlite_repository import (
+    _COMPRESSED_PAYLOAD_PREFIX,
     CURRENT_SCHEMA_VERSION,
     SQLiteRepository,
-    _COMPRESSED_PAYLOAD_PREFIX,
 )
 
 
