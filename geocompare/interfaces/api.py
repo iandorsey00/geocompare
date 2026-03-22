@@ -159,7 +159,7 @@ def create_app():
             if geoid:
                 profile_obj = service._fetch_profile_by_geoid(geoid)
             else:
-                profile_obj = service.get_dp(display_label=name)[0]
+                profile_obj = service._fetch_profile_by_name(name)
         except ValueError as exc:
             raise HTTPException(status_code=404, detail=str(exc))
         return _serialize_profile(profile_obj, official_labels=official_labels, include_metrics=True)
