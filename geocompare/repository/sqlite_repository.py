@@ -449,32 +449,33 @@ class SQLiteRepository(DataRepository):
         if n <= 0:
             return []
 
-        tokens = [token for token in query.split() if token]
+        tokens = [token for token in str(query or "").split() if token]
+        if not tokens:
+            return []
+
         conn = self._connect()
         try:
-            rows = []
-            if tokens:
-                where_sql = " AND ".join(["name LIKE ?"] * len(tokens))
-                params = [f"%{token}%" for token in tokens]
-                rows = conn.execute(
-                    f"""
-                    SELECT name, payload
-                    FROM demographic_profiles
-                    WHERE {where_sql}
-                    LIMIT 5000
-                    """,
-                    params,
-                ).fetchall()
-
-            if not rows:
-                rows = conn.execute("SELECT name, payload FROM demographic_profiles").fetchall()
+            where_sql = " AND ".join(["name LIKE ?"] * len(tokens))
+            params = [f"%{token}%" for token in tokens]
+            rows = conn.execute(
+                f"""
+                SELECT name
+                FROM demographic_profiles
+                WHERE {where_sql}
+                LIMIT 5000
+                """,
+                params,
+            ).fetchall()
         except sqlite3.Error as e:
             raise RuntimeError(f"unexpected sqlite error while searching profiles: {e!r}")
         finally:
             conn.close()
 
-        best = heapq.nlargest(n, rows, key=lambda row: fuzz.token_set_ratio(query, row[0]))
-        return [load_payload(row[1]) for row in best]
+        if not rows:
+            return []
+
+        best_names = [row[0] for row in heapq.nlargest(n, rows, key=lambda row: fuzz.token_set_ratio(query, row[0]))]
+        return [self.get_demographic_profile(name) for name in best_names if self.get_demographic_profile(name) is not None]
 
     def get_coordinates(self, display_label):
         conn = self._connect()
