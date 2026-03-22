@@ -102,6 +102,19 @@ def test_get_demographic_profile_by_geoid_returns_match(tmp_path):
     assert profile is not None
     assert profile.name == "Alpha city, California"
 
+    suffix_profile = repo.get_demographic_profile_by_geoid("0601000")
+    assert suffix_profile is not None
+    assert suffix_profile.name == "Alpha city, California"
+
+    conn = sqlite3.connect(str(tmp_path / "test.sqlite"))
+    try:
+        geoid = conn.execute("SELECT geoid FROM demographic_profiles WHERE name = ?", ("Alpha city, California",)).fetchone()
+    finally:
+        conn.close()
+
+    assert geoid is not None
+    assert geoid[0] == "16000US0601000"
+
 
 def test_engine_get_dp_uses_repository_before_loading_all_data():
     engine = Engine()

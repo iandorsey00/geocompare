@@ -193,6 +193,7 @@ class SQLiteRepository(DataRepository):
             CREATE TABLE demographic_profiles (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,
+                geoid TEXT,
                 sumlevel TEXT NOT NULL,
                 state TEXT NOT NULL,
                 counties_geoids TEXT NOT NULL,
@@ -207,6 +208,7 @@ class SQLiteRepository(DataRepository):
         )
 
         conn.execute("CREATE INDEX idx_dp_name ON demographic_profiles(name)")
+        conn.execute("CREATE INDEX idx_dp_geoid ON demographic_profiles(geoid)")
         conn.execute("CREATE INDEX idx_dp_sumlevel ON demographic_profiles(sumlevel)")
         conn.execute("CREATE INDEX idx_dp_state ON demographic_profiles(state)")
         conn.execute("CREATE INDEX idx_dp_population ON demographic_profiles(population)")
@@ -215,6 +217,7 @@ class SQLiteRepository(DataRepository):
         column_names = (
             [
                 "name",
+                "geoid",
                 "sumlevel",
                 "state",
                 "counties_geoids",
@@ -241,6 +244,7 @@ class SQLiteRepository(DataRepository):
 
             row = [
                 dp.name,
+                getattr(dp, "geoid", None),
                 dp.sumlevel,
                 dp.state,
                 counties_geoids,
@@ -373,22 +377,29 @@ class SQLiteRepository(DataRepository):
     def get_demographic_profile_by_geoid(self, geoid):
         conn = self._connect()
         try:
-            row = conn.execute(
-                """
-                SELECT payload
-                FROM demographic_profiles
-                WHERE name = ?
-                   OR name = ?
-                   OR payload LIKE ?
-                ORDER BY population DESC
-                LIMIT 1
-                """,
-                (
-                    geoid,
-                    f"ZCTA5 {geoid}" if str(geoid or "").isdigit() and len(str(geoid)) == 5 else geoid,
-                    f'%"{geoid}"%',
-                ),
-            ).fetchone()
+            columns = self._table_columns(conn, "demographic_profiles")
+            if "geoid" in columns:
+                row = conn.execute(
+                    """
+                    SELECT payload
+                    FROM demographic_profiles
+                    WHERE geoid = ? OR geoid LIKE ?
+                    ORDER BY population DESC
+                    LIMIT 1
+                    """,
+                    (geoid, f"%US{geoid}"),
+                ).fetchone()
+            else:
+                row = conn.execute(
+                    """
+                    SELECT payload
+                    FROM demographic_profiles
+                    WHERE payload LIKE ?
+                    ORDER BY population DESC
+                    LIMIT 1
+                    """,
+                    (f'%"{geoid}"%',),
+                ).fetchone()
         except sqlite3.Error as e:
             raise RuntimeError(f"unexpected sqlite error while loading profile by geoid: {e!r}")
         finally:
