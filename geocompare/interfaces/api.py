@@ -90,6 +90,16 @@ def _serialize_ranking_row(service, profile, data_identifier, official_labels=Fa
     }
 
 
+def _serialize_nearest_row(profile, distance_miles, official_labels=False, kilometers=False):
+    distance = float(distance_miles) * 1.609344 if kilometers else float(distance_miles)
+    return {
+        "geography": _serialize_profile(profile, official_labels=official_labels, include_metrics=False),
+        "distance_miles": float(distance_miles),
+        "distance": distance,
+        "distance_unit": "km" if kilometers else "mi",
+    }
+
+
 def _build_service(sqlite_path=None):
     service = QueryService()
     target_path = sqlite_path or os.getenv("GEOCOMPARE_SQLITE_PATH")
@@ -335,6 +345,41 @@ def create_app():
                     official_labels=official_labels,
                 )
                 for row in rows
+            ],
+        }
+
+    @app.get("/nearest")
+    def nearest(
+        name: str,
+        scope: str = "places+",
+        where: str = "",
+        n: int = Query(10, ge=1, le=100),
+        official_labels: bool = False,
+        kilometers: bool = False,
+    ):
+        service = get_service()
+        try:
+            rows = service.closest_geographies(
+                display_label=name,
+                context=scope,
+                geofilter=where,
+                n=n,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+        return {
+            "query": name,
+            "scope": scope,
+            "count": len(rows),
+            "results": [
+                _serialize_nearest_row(
+                    profile,
+                    distance_miles,
+                    official_labels=official_labels,
+                    kilometers=kilometers,
+                )
+                for profile, distance_miles in rows
             ],
         }
 

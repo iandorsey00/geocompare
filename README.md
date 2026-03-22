@@ -25,6 +25,18 @@ geocompare query profile "San Francisco city, California"
 For setup, commands, overlays, and deeper reference material, use the docs in
 [`doc/`](doc/index.md).
 
+## Optional API
+
+GeoCompare also includes a minimal read-only API layer for personal remote
+access and lightweight deployments.
+
+```bash
+python3 -m pip install -e ".[web]"
+geocompare-api
+```
+
+See [`doc/remote-access.md`](doc/remote-access.md) for details.
+
 ## Diagnostics
 
 Set verbosity when needed:

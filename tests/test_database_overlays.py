@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from geocompare.database.Database import Database
+from geocompare.models.demographic_profile import DemographicProfile
 
 
 class FakeDP:
@@ -122,12 +123,56 @@ def test_apply_overlays_adds_voter_metrics_with_inline_percentages():
     assert added["registered_voters"]["section_title"] == "VOTER REGISTRATION"
     assert added["registered_voters"]["value_display"] == "1,000"
     assert added["registered_voters"]["compound_display"] == "50.0%"
+    assert added["registered_voters"]["indent"] == 0
+    assert added["democratic_voters"]["indent"] == 2
+    assert added["republican_voters"]["indent"] == 2
+    assert added["other_voters"]["indent"] == 2
     assert added["democratic_voters"]["compound_display"] == "52.0%"
     assert added["republican_voters"]["compound_display"] == "38.0%"
     assert round(added["democratic_voters_pct"]["value"], 1) == 52.0
     assert round(added["republican_voters_pct"]["value"], 1) == 38.0
     assert round(added["other_voters_pct"]["value"], 1) == 10.0
     assert added["democratic_voters_pct"]["value_display"].endswith("%")
+
+    visible_voter_keys = [
+        row["key"]
+        for row in dp.added
+        if row["section_title"] == "VOTER REGISTRATION" and row["show_in_profile"]
+    ]
+    assert visible_voter_keys[:4] == [
+        "registered_voters",
+        "democratic_voters",
+        "republican_voters",
+        "other_voters",
+    ]
+
+
+def test_voter_overlay_rows_sort_registered_then_party_breakout():
+    dp = DemographicProfile.__new__(DemographicProfile)
+    dp.rh = {
+        "registered_voters": "Registered voters",
+        "democratic_voters": "  Democratic voters",
+        "republican_voters": "  Republican voters",
+        "other_voters": "  Other voters",
+    }
+
+    db = Database.__new__(Database)
+    ordered = sorted(
+        [
+            ("std", "other_voters"),
+            ("std", "registered_voters"),
+            ("std", "republican_voters"),
+            ("std", "democratic_voters"),
+        ],
+        key=lambda row: db._overlay_row_sort_key(dp, row),
+    )
+
+    assert [key for _mode, key in ordered] == [
+        "registered_voters",
+        "democratic_voters",
+        "republican_voters",
+        "other_voters",
+    ]
 
 
 def test_apply_overlays_deduplicates_full_geoid_matches():

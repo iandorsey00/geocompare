@@ -26,10 +26,15 @@ dev = [
   "black==24.10.0",
   "mypy>=1.10.0",
 ]
+web = [
+  "fastapi>=0.115.0,<1.0.0",
+  "uvicorn>=0.30.0,<1.0.0",
+]
 
 [project.scripts]
 geocompare = "geocompare.interfaces.cli:main"
 geocompare-gui = "geocompare.interfaces.gui:main"
+geocompare-api = "geocompare.interfaces.api:main"
 
 [tool.setuptools.packages.find]
 exclude = ["docs*", "old-2016-files*", "bin*"]

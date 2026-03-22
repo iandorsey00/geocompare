@@ -633,11 +633,16 @@ class Database:
         ):
             show_in_profile = False
 
+        indent = 0
+        if key in {"democratic_voters", "republican_voters", "other_voters"}:
+            indent = 2
+
         dp.add_custom_metric(
             section_title=section_title,
             key=key,
             label=label,
             value=metric_value,
+            indent=indent,
             value_display=value_display,
             compound_value=compound_value,
             compound_display=compound_display,
@@ -729,6 +734,14 @@ class Database:
         meta = self._overlay_meta(key)
         display_label = dp.rh.get(key, key).strip().lower()
         order = 1_000_000
+        voter_order = {
+            "registered_voters": 0,
+            "democratic_voters": 1,
+            "republican_voters": 2,
+            "other_voters": 3,
+        }
+        if key in voter_order:
+            return (voter_order[key], display_label, key)
         if isinstance(meta, dict):
             try:
                 order = float(meta.get("order", order))
