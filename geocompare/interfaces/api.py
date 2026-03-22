@@ -164,6 +164,15 @@ def create_app():
             raise HTTPException(status_code=404, detail=str(exc))
         return _serialize_profile(profile_obj, official_labels=official_labels, include_metrics=True)
 
+    @app.get("/sources")
+    def sources():
+        service = get_service()
+        rows = service.sources()
+        return {
+            "count": len(rows),
+            "results": rows,
+        }
+
     @app.get("/resolve")
     def resolve(
         query: str,
