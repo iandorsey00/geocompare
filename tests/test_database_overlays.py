@@ -66,6 +66,7 @@ def test_apply_overlays_adds_crime_and_project_metrics():
 
     crime_metric = next(row for row in dp.added if row["key"] == "violent_crime_count")
     assert crime_metric["section_title"] == "CRIME"
+    assert crime_metric["label"] == "Violent crimes"
     assert crime_metric["compound_display"].endswith("/100k")
 
     project_metric = next(row for row in dp.added if row["key"] == "project_custom_index")

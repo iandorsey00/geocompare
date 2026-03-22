@@ -4,10 +4,10 @@ import logging
 import re
 import sqlite3
 from collections import defaultdict
-from math import atan2, cos, radians, sin, sqrt
 
 # from initialize_sqlalchemy import Base, engine, session
 from itertools import islice
+from math import atan2, cos, radians, sin, sqrt
 from pathlib import Path
 
 import numpy as np
@@ -68,12 +68,12 @@ class Database:
     }
 
     CRIME_METRIC_DEFS = [
-        ("violent_crime_count", "Violent crimes (NIBRS 2024)"),
-        ("property_crime_count", "Property crimes (NIBRS 2024)"),
-        ("total_crime_count", "Total crimes (NIBRS 2024)"),
-        ("violent_crime_rate", "Violent crime rate per 100k (NIBRS 2024)"),
-        ("property_crime_rate", "Property crime rate per 100k (NIBRS 2024)"),
-        ("total_crime_rate", "Total crime rate per 100k (NIBRS 2024)"),
+        ("violent_crime_count", "Violent crimes"),
+        ("property_crime_count", "Property crimes"),
+        ("total_crime_count", "Total crimes"),
+        ("violent_crime_rate", "Violent crime rate per 100k"),
+        ("property_crime_rate", "Property crime rate per 100k"),
+        ("total_crime_rate", "Total crime rate per 100k"),
     ]
 
     VOTER_PERCENT_METRIC_DEFS = [

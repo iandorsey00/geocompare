@@ -49,6 +49,17 @@ class GeoCompareCLI:
         build_parser.add_argument("path", help="path to data files")
         build_parser.set_defaults(func=self.create_data_products)
 
+        sources_parser = subparsers.add_parser(
+            "sources", help="show built-in data source information"
+        )
+        sources_parser.add_argument(
+            "--format",
+            choices=["table", "json"],
+            default="table",
+            help="output format",
+        )
+        sources_parser.set_defaults(func=self.display_sources)
+
         query_parser = subparsers.add_parser("query", help="query and compare geographies")
         query_subparsers = query_parser.add_subparsers(
             help="enter geocompare query <command> -h for details",
@@ -349,6 +360,40 @@ class GeoCompareCLI:
     def create_data_products(self, args):
         self.engine.create_data_products(args.path)
         print("Data product write completed.")
+
+    def display_sources(self, args):
+        rows = self.engine.sources()
+        if args.format == "json":
+            print(json.dumps(rows, indent=2))
+            return
+
+        columns = [
+            ("Name", max(len("Name"), *(len(row["name"]) for row in rows))),
+            ("Used for", max(len("Used for"), *(len(row["used_for"]) for row in rows))),
+            ("Provider", max(len("Provider"), *(len(row["provider"]) for row in rows))),
+        ]
+        width = 1 + sum(column_width + 1 for _, column_width in columns) - 1
+        print("-" * width)
+        print(
+            " "
+            + " ".join(
+                self._fit(header, column_width, truncate=False) for header, column_width in columns
+            )
+        )
+        print("-" * width)
+        for row in rows:
+            print(
+                " "
+                + " ".join(
+                    [
+                        self._fit(row["name"], columns[0][1]),
+                        self._fit(row["used_for"], columns[1][1]),
+                        self._fit(row["provider"], columns[2][1]),
+                    ]
+                )
+            )
+            print(f" Notes: {row['notes']}")
+        print("-" * width)
 
     def _eprint(self, msg):
         print(msg, file=sys.stderr)

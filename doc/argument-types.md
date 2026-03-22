@@ -23,6 +23,23 @@ for example:
 
 Use `_pct` suffixes for percentage-style identifiers.
 
+## Source information
+
+Use:
+
+```bash
+geocompare sources
+geocompare sources --format json
+```
+
+This command lists built-in source information for:
+
+- ACS-based profile metrics
+- Census geography metadata
+- built-in crime and voter overlays
+
+It does not list personal or custom overlay metrics.
+
 ## Categories for `export rows`
 
 Examples:

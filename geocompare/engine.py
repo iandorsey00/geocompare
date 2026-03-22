@@ -27,6 +27,37 @@ from geocompare.tools.summary_level_parser import SummaryLevelParser
 
 
 class Engine:
+    SOURCE_INFO = [
+        {
+            "key": "acs_5yr",
+            "name": "American Community Survey 5-year estimates",
+            "used_for": "Core demographic and housing metrics",
+            "provider": "U.S. Census Bureau",
+            "notes": "Primary source for most profile metrics, including income, housing, race, age, and education.",
+        },
+        {
+            "key": "census_gazetteer",
+            "name": "Census Gazetteer files",
+            "used_for": "Geography metadata",
+            "provider": "U.S. Census Bureau",
+            "notes": "Used for names, land area, latitude, longitude, and geography indexing.",
+        },
+        {
+            "key": "crime_overlay",
+            "name": "Canonical crime overlay",
+            "used_for": "Violent, property, and total crime metrics",
+            "provider": "User-supplied canonical overlay derived from FBI crime data",
+            "notes": "Covers the built-in crime overlay metrics only, not personal or custom overlays.",
+        },
+        {
+            "key": "voter_overlay",
+            "name": "Canonical voter registration overlay",
+            "used_for": "Registered, Democratic, Republican, and Other voter metrics",
+            "provider": "User-supplied canonical overlay built from voter registration data",
+            "notes": "Covers the built-in voter overlay metrics only, not personal or custom overlays.",
+        },
+    ]
+
     def __init__(self):
         self.logger = logging.getLogger(__name__)
         self.ct = CountyLookup()
@@ -486,6 +517,9 @@ class Engine:
 
     def _format_identifier_label(self, identifier):
         return identifier.replace("_", " ")
+
+    def sources(self):
+        return [dict(row) for row in self.SOURCE_INFO]
 
     def resolve_data_identifier(self, data_identifier, fetch_one):
         requested = str(data_identifier or "").strip().lower()

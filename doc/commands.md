@@ -11,6 +11,7 @@ geocompare [--log-level LEVEL] [--version] <command> [subcommand] [options]
 Top-level commands:
 
 - `build`
+- `sources`
 - `query`
 - `resolve`
 - `export`
@@ -26,6 +27,18 @@ Notes:
 - `build` auto-detects the latest ACS and gazetteer years in the data directory.
 - Overlay files, when present, are attached during build.
 - Overlay metric names become queryable data identifiers.
+
+## Sources
+
+```bash
+geocompare sources
+geocompare sources --format json
+```
+
+Notes:
+
+- `sources` shows built-in source information for ACS, Census geography metadata, and the canonical base overlays.
+- Personal or custom overlay metrics are intentionally excluded.
 
 ## Query
 
