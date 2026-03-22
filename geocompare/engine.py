@@ -1423,13 +1423,7 @@ class Engine:
 
     def closest_geographies(self, display_label, context="", geofilter="", n=10, **kwargs):
         """Display the closest geographies"""
-        d = self.get_data_products()
-
         target_geo = self._lookup_dp(display_label)
-        dpi_instances = d["demographicprofiles"]
-        # Remove numpy.nans because they interfere with sorted()
-        # dpi_instances = list(filter(lambda x: not \
-        #                numpy.isnan(getattr(x, sort_by)[comp]), dpi_instances))
 
         if n <= 0:
             return []
@@ -1478,6 +1472,9 @@ class Engine:
                 return heapq.nsmallest(n, dp_distances, key=lambda x: x[1])
             except RuntimeError:
                 pass
+
+        d = self.get_data_products()
+        dpi_instances = d["demographicprofiles"]
 
         # Filter instances
         dpi_instances = self.context_filter(dpi_instances, context, geofilter)

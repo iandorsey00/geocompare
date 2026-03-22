@@ -104,3 +104,45 @@ def test_engine_get_dp_uses_repository_before_loading_all_data():
 
     profile = engine.get_dp("Alpha city, California")[0]
     assert profile.name == "Alpha city, California"
+
+
+def test_engine_closest_geographies_uses_repository_before_loading_all_data():
+    engine = Engine()
+    target_profile = SimpleNamespace(
+        name="Alpha city, California",
+        rc={"latitude": 37.0, "longitude": -122.0},
+    )
+    beta_profile = SimpleNamespace(name="Beta city, California")
+    gamma_profile = SimpleNamespace(name="Gamma city, California")
+    queried_names = []
+
+    engine._lookup_dp = lambda name: (
+        target_profile
+        if name == "Alpha city, California"
+        else queried_names.append(name) or {
+            "Beta city, California": beta_profile,
+            "Gamma city, California": gamma_profile,
+        }[name]
+    )
+    engine._build_sql_query_params = lambda context, geofilter, fetch_one: {
+        "universe_sl": "160",
+        "group_sl": None,
+        "group": None,
+        "county_geoid": None,
+        "geofilter_conditions": [],
+    }
+    engine.primary_repository = SimpleNamespace(
+        query_profile_coordinates=lambda **kwargs: [
+            ("Beta city, California", 37.1, -122.1),
+            ("Gamma city, California", 37.2, -122.2),
+        ],
+    )
+    engine._repo_supports = lambda method: method == "query_profile_coordinates"
+    engine.get_data_products = lambda: (_ for _ in ()).throw(AssertionError("should not load all data"))
+
+    rows = engine.closest_geographies("Alpha city, California", context="places+", n=2)
+    assert [profile.name for profile, _distance in rows] == [
+        "Beta city, California",
+        "Gamma city, California",
+    ]
+    assert queried_names == ["Beta city, California", "Gamma city, California"]
