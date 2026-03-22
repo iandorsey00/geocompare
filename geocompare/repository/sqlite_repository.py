@@ -360,7 +360,15 @@ class SQLiteRepository(DataRepository):
         if row is None:
             return None
 
-        return load_payload(row[0])
+        try:
+            payload = row[0]
+            if isinstance(payload, (bytes, bytearray)) and payload.startswith(_COMPRESSED_PAYLOAD_PREFIX):
+                payload = zlib.decompress(payload[len(_COMPRESSED_PAYLOAD_PREFIX) :])
+            return load_payload(payload)
+        except (json.JSONDecodeError, UnicodeDecodeError, ValueError, zlib.error):
+            raise RuntimeError(f"profile payload is corrupted or incompatible: {self.path}")
+        except Exception as e:
+            raise RuntimeError(f"unexpected error loading sqlite profile: {e!r}")
 
     def get_any_demographic_profile(self):
         conn = self._connect()

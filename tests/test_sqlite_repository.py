@@ -1,6 +1,12 @@
 import sqlite3
+import zlib
 
-from geocompare.repository.sqlite_repository import CURRENT_SCHEMA_VERSION, SQLiteRepository
+from geocompare.repository.serialization import dump_payload
+from geocompare.repository.sqlite_repository import (
+    CURRENT_SCHEMA_VERSION,
+    SQLiteRepository,
+    _COMPRESSED_PAYLOAD_PREFIX,
+)
 
 
 class DummyProfile:
@@ -61,3 +67,26 @@ def test_roundtrip_load_products(tmp_path):
     loaded = repo.load_data_products()
     assert len(loaded["demographicprofiles"]) == 2
     assert len(loaded["geovectors"]) == 2
+
+
+def test_get_demographic_profile_supports_compressed_payloads(tmp_path):
+    repo = SQLiteRepository(tmp_path / "test.sqlite")
+    repo.save_data_products(_products())
+
+    conn = sqlite3.connect(str(tmp_path / "test.sqlite"))
+    try:
+        compressed_payload = _COMPRESSED_PAYLOAD_PREFIX + zlib.compress(
+            dump_payload(_products()["demographicprofiles"][0]),
+            level=6,
+        )
+        conn.execute(
+            "UPDATE demographic_profiles SET payload = ? WHERE name = ?",
+            (compressed_payload, "Alpha city, California"),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    profile = repo.get_demographic_profile("Alpha city, California")
+    assert profile is not None
+    assert profile.name == "Alpha city, California"
