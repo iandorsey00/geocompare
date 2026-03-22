@@ -390,16 +390,22 @@ class SQLiteRepository(DataRepository):
                     (geoid, f"%US{geoid}"),
                 ).fetchone()
             else:
-                row = conn.execute(
+                row = None
+                for candidate in conn.execute(
                     """
                     SELECT payload
                     FROM demographic_profiles
-                    WHERE payload LIKE ? OR payload LIKE ?
                     ORDER BY population DESC
-                    LIMIT 1
-                    """,
-                    (f'%"{geoid}"%', f'%US{geoid}%'),
-                ).fetchone()
+                    """
+                ):
+                    payload = candidate[0]
+                    if isinstance(payload, (bytes, bytearray)) and payload.startswith(_COMPRESSED_PAYLOAD_PREFIX):
+                        payload = zlib.decompress(payload[len(_COMPRESSED_PAYLOAD_PREFIX) :])
+                    profile = load_payload(payload)
+                    candidate_geoid = getattr(profile, "geoid", None)
+                    if candidate_geoid == geoid or str(candidate_geoid or "").endswith(str(geoid)):
+                        row = candidate
+                        break
         except sqlite3.Error as e:
             raise RuntimeError(f"unexpected sqlite error while loading profile by geoid: {e!r}")
         finally:
