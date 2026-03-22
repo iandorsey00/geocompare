@@ -3,6 +3,7 @@ import heapq
 import json
 import logging
 import math
+import re
 import sqlite3
 import zlib
 from datetime import datetime, timezone
@@ -12,7 +13,6 @@ from rapidfuzz import fuzz
 
 from geocompare.repository.base import DataRepository
 from geocompare.repository.serialization import dump_payload, load_payload
-import re
 
 CURRENT_SCHEMA_VERSION = 1
 _COMPRESSED_PAYLOAD_PREFIX = b"Z1:"
