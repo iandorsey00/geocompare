@@ -1,71 +1,83 @@
 # GeoCompare Handoff
 
 ## Snapshot
+
 - Project: `geocompare`
-- Handoff date: 2026-03-14
 - Branch: `master`
-- Version: `0.6.12`
+- Version: `0.9.0`
 
-## Project Scope
-GeoCompare builds and queries local demographic data products from ACS/Gazetteer
-inputs and optional overlays.
+## Scope
 
-Project documentation now lives in-repo under `doc/`. The standalone
-`geocompare.wiki` repo can be treated as deprecated once the migrated docs are
-committed and pushed.
+GeoCompare builds and queries local demographic data products from:
 
-Core/base overlays:
-- Crime overlay (`CRIME`)
-- Voter registration overlay (`VOTER REGISTRATION`)
+- ACS 5-year summary-file inputs
+- Census geography metadata
+- built-in crime and voter overlays
+- optional custom overlays
 
-Optional/custom overlays:
-- User/private metrics, typically in `project_data.csv` (`PROJECT DATA` or
-  manifest-defined section)
+The project supports both CLI usage and a minimal read-only API for personal
+remote access or lightweight deployments.
 
-## Current Data/Overlay Model
-- Build command:
+## Major Current Capabilities
+
+- tract support throughout build, query, and identity resolution
+- human-friendly tract labels, with optional official Census tract labels
+- ranking queries such as:
+  - `top`
+  - `bottom`
+  - `nearest`
+  - `remoteness`
+  - `local-average`
+- candidate-side and qualifying-side remoteness filtering
+- county-proxy filtering for large-county exploration
+- built-in `sources` command for ACS and base-overlay provenance
+- optional API via `geocompare-api`
+
+## Data Model Notes
+
+- Base profile metrics primarily come from ACS 5-year estimates.
+- Geography metadata such as land area and coordinates comes from Census
+  Gazetteer files.
+- Built-in overlays:
+  - `CRIME`
+  - `VOTER REGISTRATION`
+- Custom overlays may also be attached during build.
+- `sources` lists built-in sources only; it intentionally excludes personal or
+  custom overlay metrics.
+
+## Main Entry Points
+
+- Build:
   - `python3 -m geocompare.interfaces.cli build <data_path>`
-- Base inputs are discovered from files under `<data_path>`.
-- Overlay inputs are discovered under `<data_path>/overlays`.
-- `scripts/fetch_overlays.py` merges onto existing canonical overlay CSVs, so
-  voter/crime data can be imported incrementally across multiple runs.
-- Built-in voter overlays may be partial:
-  - `registered_voters` alone is valid.
-  - Party breakout columns are optional when a source does not publish them.
-- Optional manifest support:
-  - `overlay_manifest.json` (or `manifest.json`) in overlays directory.
-  - Supports per-metric metadata (`key`, `label`, `section`, `type`, `order`).
-- Overlay section placement:
-  - Base profile sections first.
-  - Overlay sections appended at bottom.
-  - Overlay rows deterministically ordered.
+- Common queries:
+  - `geocompare query search ...`
+  - `geocompare query profile ...`
+  - `geocompare query remoteness ...`
+  - `geocompare query local-average ...`
+  - `geocompare sources`
 
-## Base-Only Recovery (No Custom Overlay)
-To restore a clean base state without private project overlay:
+## Documentation
 
-1. Fetch core data:
-   - `python3 scripts/fetch_latest_acs.py --out-dir <data_path> --archive-existing`
-2. Optionally build canonical base overlays:
-   - `python3 scripts/fetch_overlays.py --out-dir <data_path> --crime-source <src> --voter-source <src>`
-3. Ensure custom overlay artifacts are absent:
-   - remove/relocate `<data_path>/overlays/project_data.csv`
-   - remove/relocate `<data_path>/overlays/overlay_manifest.json`
-4. Rebuild:
-   - `python3 -m geocompare.interfaces.cli build <data_path>`
+Primary docs live under [`doc/`](./doc/index.md), especially:
 
-## Tracked Scripts
-- `scripts/fetch_latest_acs.py`
-- `scripts/fetch_overlays.py`
-- `scripts/build_nibrs_crime_overlay.py`
+- [Setup](./doc/setup.md)
+- [Commands](./doc/commands.md)
+- [Argument Types](./doc/argument-types.md)
+- [Overlays](./doc/overlays.md)
+- [Remote Access](./doc/remote-access.md)
 
 ## Validation
-Recommended checks before ACP:
 
-1. `ruff check tests geocompare/identity geocompare/repository/sqlite_repository.py geocompare/interfaces/cli.py scripts/fetch_overlays.py`
-2. `black --check tests geocompare/identity geocompare/repository/sqlite_repository.py geocompare/interfaces/cli.py scripts/fetch_overlays.py`
-3. `mypy geocompare/identity geocompare/repository/sqlite_repository.py geocompare/interfaces/cli.py`
-4. `PYTHONPATH=. pytest -q`
+Useful checks before ACP:
 
-## License
-Repository license is MIT (`LICENSE`). This remains appropriate for the base
-project.
+1. `ruff check tests geocompare`
+2. `black --check tests geocompare`
+3. `PYTHONPATH=. pytest -q`
+
+Use narrower commands when working on a small slice of the repo.
+
+## Notes
+
+- Keep repo docs project-neutral and avoid embedding private deployment details.
+- Prefer separate sibling repos for richer web UI or geocoding products rather
+  than expanding the core repo too far beyond its build/query role.

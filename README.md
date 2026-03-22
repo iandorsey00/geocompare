@@ -45,14 +45,14 @@ Set verbosity when needed:
 geocompare --log-level INFO build /path/to/data
 ```
 
-## Quality Baseline
+## Quality Checks
 
-Run local quality checks:
+Run the usual local checks when touching the codebase:
 
 ```bash
 python3 -m pip install -e ".[dev]"
-ruff check tests geocompare/identity geocompare/repository/sqlite_repository.py geocompare/interfaces/cli.py scripts/fetch_overlays.py
-black --check tests geocompare/identity geocompare/repository/sqlite_repository.py geocompare/interfaces/cli.py scripts/fetch_overlays.py
+ruff check tests geocompare
+black --check tests geocompare
 mypy geocompare/identity geocompare/repository/sqlite_repository.py geocompare/interfaces/cli.py
 pytest -q
 ```

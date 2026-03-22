@@ -9,6 +9,7 @@ the codebase and be reviewed in normal commits.
 - [Tutorial](./tutorial.md)
 - [Commands](./commands.md)
 - [Argument Types](./argument-types.md)
+- [Remote Access](./remote-access.md)
 
 ## Reference
 
