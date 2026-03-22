@@ -54,7 +54,7 @@ class Engine:
             "name": "Canonical voter registration overlay",
             "used_for": "Registered, Democratic, Republican, and Other voter metrics",
             "provider": "User-supplied canonical overlay built from voter registration data",
-            "notes": "Covers the built-in voter overlay metrics only, not personal or custom overlays.",
+            "notes": "Built from voter registration data.",
         },
     ]
 
