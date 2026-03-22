@@ -1423,7 +1423,7 @@ class Engine:
 
     def closest_geographies(self, display_label, context="", geofilter="", n=10, **kwargs):
         """Display the closest geographies"""
-        target_geo = self._lookup_dp(display_label)
+        target_geo = self._fetch_profile_by_name(display_label)
 
         if n <= 0:
             return []
