@@ -47,7 +47,7 @@ class Engine:
             "name": "Canonical crime overlay",
             "used_for": "Violent, property, and total crime metrics",
             "provider": "User-supplied canonical overlay derived from FBI crime data",
-            "notes": "Covers the built-in crime overlay metrics only, not personal or custom overlays.",
+            "notes": "Built from FBI crime data.",
         },
         {
             "key": "voter_overlay",
