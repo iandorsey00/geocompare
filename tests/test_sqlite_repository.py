@@ -94,6 +94,15 @@ def test_get_demographic_profile_supports_compressed_payloads(tmp_path):
     assert profile.name == "Alpha city, California"
 
 
+def test_get_demographic_profile_by_geoid_returns_match(tmp_path):
+    repo = SQLiteRepository(tmp_path / "test.sqlite")
+    repo.save_data_products(_products())
+
+    profile = repo.get_demographic_profile_by_geoid("16000US0601000")
+    assert profile is not None
+    assert profile.name == "Alpha city, California"
+
+
 def test_engine_get_dp_uses_repository_before_loading_all_data():
     engine = Engine()
     engine.primary_repository = SimpleNamespace(
@@ -104,6 +113,19 @@ def test_engine_get_dp_uses_repository_before_loading_all_data():
 
     profile = engine.get_dp("Alpha city, California")[0]
     assert profile.name == "Alpha city, California"
+
+
+def test_engine_fetch_profile_by_geoid_uses_repository_before_loading_all_data():
+    engine = Engine()
+    engine.primary_repository = SimpleNamespace(
+        get_demographic_profile_by_geoid=lambda geoid: SimpleNamespace(name="Alpha city, California", geoid=geoid),
+    )
+    engine._repo_supports = lambda method: method == "get_demographic_profile_by_geoid"
+    engine.get_data_products = lambda: (_ for _ in ()).throw(AssertionError("should not load all data"))
+
+    profile = engine._fetch_profile_by_geoid("16000US0601000")
+    assert profile.name == "Alpha city, California"
+    assert profile.geoid == "16000US0601000"
 
 
 def test_engine_closest_geographies_uses_repository_before_loading_all_data():

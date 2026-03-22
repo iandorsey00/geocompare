@@ -380,6 +380,25 @@ class Engine:
 
         return self._lookup_dp(display_label)
 
+    def _fetch_profile_by_geoid(self, geoid):
+        if not geoid:
+            raise ValueError("Missing geoid.")
+
+        if self.d is not None:
+            for dp in self.d.get("demographicprofiles", []):
+                if getattr(dp, "geoid", None) == geoid:
+                    return dp
+
+        if self._repo_supports("get_demographic_profile_by_geoid"):
+            try:
+                dp = self.primary_repository.get_demographic_profile_by_geoid(geoid)
+                if dp is not None:
+                    return dp
+            except RuntimeError:
+                pass
+
+        raise ValueError(f"No geography found for geoid: {geoid}")
+
     def resolve_geography(self, query, state=None, sumlevel=None, population=None, n=5, **kwargs):
         """Resolve an input geography string to likely canonical matches."""
         self.get_data_products()

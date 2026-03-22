@@ -151,10 +151,15 @@ def create_app():
         }
 
     @app.get("/profile")
-    def profile(name: str, official_labels: bool = False):
+    def profile(name: str | None = None, geoid: str | None = None, official_labels: bool = False):
         service = get_service()
+        if not name and not geoid:
+            raise HTTPException(status_code=400, detail="Provide either name or geoid.")
         try:
-            profile_obj = service.get_dp(display_label=name)[0]
+            if geoid:
+                profile_obj = service._fetch_profile_by_geoid(geoid)
+            else:
+                profile_obj = service.get_dp(display_label=name)[0]
         except ValueError as exc:
             raise HTTPException(status_code=404, detail=str(exc))
         return _serialize_profile(profile_obj, official_labels=official_labels, include_metrics=True)

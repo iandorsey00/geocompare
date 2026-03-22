@@ -370,6 +370,43 @@ class SQLiteRepository(DataRepository):
         except Exception as e:
             raise RuntimeError(f"unexpected error loading sqlite profile: {e!r}")
 
+    def get_demographic_profile_by_geoid(self, geoid):
+        conn = self._connect()
+        try:
+            row = conn.execute(
+                """
+                SELECT payload
+                FROM demographic_profiles
+                WHERE name = ?
+                   OR name = ?
+                   OR payload LIKE ?
+                ORDER BY population DESC
+                LIMIT 1
+                """,
+                (
+                    geoid,
+                    f"ZCTA5 {geoid}" if str(geoid or "").isdigit() and len(str(geoid)) == 5 else geoid,
+                    f'%"{geoid}"%',
+                ),
+            ).fetchone()
+        except sqlite3.Error as e:
+            raise RuntimeError(f"unexpected sqlite error while loading profile by geoid: {e!r}")
+        finally:
+            conn.close()
+
+        if row is None:
+            return None
+
+        try:
+            payload = row[0]
+            if isinstance(payload, (bytes, bytearray)) and payload.startswith(_COMPRESSED_PAYLOAD_PREFIX):
+                payload = zlib.decompress(payload[len(_COMPRESSED_PAYLOAD_PREFIX) :])
+            return load_payload(payload)
+        except (json.JSONDecodeError, UnicodeDecodeError, ValueError, zlib.error):
+            raise RuntimeError(f"profile payload is corrupted or incompatible: {self.path}")
+        except Exception as e:
+            raise RuntimeError(f"unexpected error loading sqlite profile by geoid: {e!r}")
+
     def get_any_demographic_profile(self):
         conn = self._connect()
         try:
