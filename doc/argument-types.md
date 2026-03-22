@@ -119,6 +119,7 @@ For `query remoteness`:
 
 - `--where` filters candidate geographies only
 - `--match-where` filters qualifying geographies only
+- `--county-population-min` and `--county-density-min` filter candidate geographies only
 
 Supported operators:
 

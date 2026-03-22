@@ -759,7 +759,7 @@ class Engine:
                     group=match_sql_params["group"],
                     county_geoid=match_sql_params["county_geoid"],
                     geofilter_conditions=match_sql_params["geofilter_conditions"],
-                    include_counties_geoids=allowed_county_geoids is not None,
+                    include_counties_geoids=False,
                 )
                 if candidate_rows and match_rows:
                     results = self._remoteness_from_rows(
@@ -787,11 +787,6 @@ class Engine:
             candidate_filtered = [
                 dp
                 for dp in candidate_filtered
-                if any(county in allowed_county_geoids for county in dp.counties)
-            ]
-            qualifying_filtered = [
-                dp
-                for dp in qualifying_filtered
                 if any(county in allowed_county_geoids for county in dp.counties)
             ]
         candidate_filtered = [
@@ -831,7 +826,9 @@ class Engine:
             ]
 
         if not candidates:
-            raise ValueError("Sorry, no candidate geographies remain on the opposite side of the threshold.")
+            raise ValueError(
+                "Sorry, no candidate geographies remain on the opposite side of the threshold."
+            )
         if not qualifying:
             raise ValueError("Sorry, no qualifying geographies remain for the requested threshold.")
 
@@ -933,7 +930,9 @@ class Engine:
         filtered = self.context_filter(dpi_instances, context, geofilter)
         if allowed_county_geoids is not None:
             filtered = [
-                dp for dp in filtered if any(county in allowed_county_geoids for county in dp.counties)
+                dp
+                for dp in filtered
+                if any(county in allowed_county_geoids for county in dp.counties)
             ]
         filtered = [
             dp
@@ -953,7 +952,9 @@ class Engine:
                     "name": dp.name,
                     "latitude": float(dp.rc["latitude"]),
                     "longitude": float(dp.rc["longitude"]),
-                    "population": 0 if dp.rc.get("population") is None else float(dp.rc["population"]),
+                    "population": (
+                        0 if dp.rc.get("population") is None else float(dp.rc["population"])
+                    ),
                     "metric_value": float(getattr(dp, store)[key]),
                     "counties": list(dp.counties),
                 }
@@ -998,7 +999,9 @@ class Engine:
                 return {
                     self.ct.county_name_to_geoid[name]
                     for name, _latitude, _longitude, _population, metric_value in rows
-                    if name in self.ct.county_name_to_geoid and metric_value is not None and metric_value >= min_value
+                    if name in self.ct.county_name_to_geoid
+                    and metric_value is not None
+                    and metric_value >= min_value
                 }
             except RuntimeError:
                 pass
@@ -1008,7 +1011,11 @@ class Engine:
         for dp in d.get("demographicprofiles", []):
             if dp.sumlevel != "050":
                 continue
-            metric_value = dp.rc.get("population") if comp_column == "rc_population" else dp.c.get("population_density")
+            metric_value = (
+                dp.rc.get("population")
+                if comp_column == "rc_population"
+                else dp.c.get("population_density")
+            )
             if metric_value is None or metric_value < min_value:
                 continue
             county_geoid = self.ct.county_name_to_geoid.get(dp.name)
@@ -1167,9 +1174,7 @@ class Engine:
         candidate_entries = self._entries_from_metric_rows(
             candidate_rows, allowed_county_geoids=allowed_county_geoids
         )
-        qualifying_entries = self._entries_from_metric_rows(
-            qualifying_rows, allowed_county_geoids=allowed_county_geoids
-        )
+        qualifying_entries = self._entries_from_metric_rows(qualifying_rows)
 
         if not candidate_entries:
             raise ValueError("Sorry, no geographies match your criteria.")
@@ -1192,7 +1197,9 @@ class Engine:
             ]
 
         if not candidates:
-            raise ValueError("Sorry, no candidate geographies remain on the opposite side of the threshold.")
+            raise ValueError(
+                "Sorry, no candidate geographies remain on the opposite side of the threshold."
+            )
         if not qualifying:
             raise ValueError("Sorry, no qualifying geographies remain for the requested threshold.")
 
@@ -1202,7 +1209,9 @@ class Engine:
         dp_cache = {}
 
         for candidate in candidates:
-            nearest, nearest_distance = self._nearest_qualifying_entry(candidate, grid, qualifying_names)
+            nearest, nearest_distance = self._nearest_qualifying_entry(
+                candidate, grid, qualifying_names
+            )
             if nearest is None or nearest_distance is None:
                 continue
 
@@ -1272,7 +1281,9 @@ class Engine:
             if len(collected) >= neighbors:
                 collected.sort(key=lambda item: item[1])
                 worst_distance = collected[neighbors - 1][1]
-                lower_bound = self._grid_outer_ring_lower_bound(lat, lon, cell, radius + 1, cell_degrees)
+                lower_bound = self._grid_outer_ring_lower_bound(
+                    lat, lon, cell, radius + 1, cell_degrees
+                )
                 if worst_distance <= lower_bound:
                     return collected[:neighbors]
 
@@ -1314,7 +1325,9 @@ class Engine:
                             best_distance = distance
 
             if best_distance is not None:
-                lower_bound = self._grid_outer_ring_lower_bound(lat, lon, cell, radius, cell_degrees)
+                lower_bound = self._grid_outer_ring_lower_bound(
+                    lat, lon, cell, radius, cell_degrees
+                )
                 if best_distance <= lower_bound:
                     return best_entry, best_distance
 

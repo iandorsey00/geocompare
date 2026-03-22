@@ -151,7 +151,7 @@ def test_remoteness_can_filter_to_large_counties():
         _county_profile("Small County, California", "06013", 150_000, 150.0),
         _profile("Tract A", 5000, 100000, 0.0, 0.0),
         _profile("Tract B", 4500, 90000, 0.0, 10.0),
-        _profile("Tract C", 4000, 60000, 0.0, 1.0),
+        _profile("Tract C", 4000, 60000, 0.0, 5.0),
         _profile("Tract D", 4200, 50000, 0.0, 15.0),
     ]
     profiles[2].counties = ["06001"]
@@ -171,6 +171,32 @@ def test_remoteness_can_filter_to_large_counties():
     assert len(results) == 1
     assert results[0]["candidate"].name == "Tract A"
     assert results[0]["nearest_match"].name == "Tract C"
+
+
+def test_remoteness_applies_county_filters_to_candidates_only():
+    profiles = [
+        _county_profile("Big County, California", "06001", 1_500_000, 1200.0),
+        _county_profile("Small County, California", "06013", 150_000, 150.0),
+        _profile("Tract A", 5000, 100000, 0.0, 0.0),
+        _profile("Tract B", 4200, 60000, 0.0, 1.0),
+        _profile("Tract C", 4000, 55000, 0.0, 5.0),
+    ]
+    profiles[2].counties = ["06001"]
+    profiles[3].counties = ["06013"]
+    profiles[4].counties = ["06001"]
+    engine = _engine_with_profiles(profiles)
+
+    results = engine.remoteness(
+        "median_household_income",
+        75000,
+        context="tracts+",
+        county_population_min=1_000_000,
+        n=10,
+    )
+
+    assert len(results) == 1
+    assert results[0]["candidate"].name == "Tract A"
+    assert results[0]["nearest_match"].name == "Tract B"
 
 
 def test_remoteness_can_filter_to_dense_counties():
