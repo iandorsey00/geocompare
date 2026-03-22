@@ -193,6 +193,7 @@ def create_app():
         target: str = "below",
         scope: str = "tracts+",
         where: str = "",
+        match_where: str = "",
         n: int = Query(15, ge=1, le=100),
         county_population_min: int | None = None,
         county_density_min: float | None = None,
@@ -208,6 +209,7 @@ def create_app():
                 target=target,
                 context=scope,
                 geofilter=where,
+                match_geofilter=match_where,
                 n=n,
                 county_population_min=county_population_min,
                 county_density_min=county_density_min,
@@ -221,6 +223,8 @@ def create_app():
             "threshold": threshold,
             "target": target,
             "scope": scope,
+            "where": where,
+            "match_where": match_where,
             "count": len(rows),
             "results": [
                 _serialize_remoteness_row(

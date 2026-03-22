@@ -112,7 +112,13 @@ Used by:
 
 ```bash
 --where EXPR
+--match-where EXPR
 ```
+
+For `query remoteness`:
+
+- `--where` filters candidate geographies only
+- `--match-where` filters qualifying geographies only
 
 Supported operators:
 

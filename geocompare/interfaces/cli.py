@@ -169,6 +169,11 @@ class GeoCompareCLI:
             help="keep only the top-ranked geography from each county",
         )
         self._add_filter_arg(remoteness_parser)
+        remoteness_parser.add_argument(
+            "--match-where",
+            dest="match_geofilter",
+            help="filter criteria for qualifying geographies only",
+        )
         self._add_context_args(remoteness_parser)
         remoteness_parser.add_argument(
             "-k", "--kilometers", action="store_true", help="display distance in kilometers"

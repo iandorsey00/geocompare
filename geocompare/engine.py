@@ -714,6 +714,7 @@ class Engine:
         target="below",
         context="tracts+",
         geofilter="",
+        match_geofilter="",
         n=10,
         county_population_min=None,
         county_density_min=None,
@@ -740,19 +741,30 @@ class Engine:
 
         if self._repo_supports("query_profile_metric_rows"):
             try:
-                sql_params = self._build_sql_query_params(context, geofilter, fetch_one)
-                rows = self.primary_repository.query_profile_metric_rows(
+                candidate_sql_params = self._build_sql_query_params(context, geofilter, fetch_one)
+                match_sql_params = self._build_sql_query_params(context, match_geofilter, fetch_one)
+                candidate_rows = self.primary_repository.query_profile_metric_rows(
                     comp_column=f"{store}_{key}",
-                    universe_sl=sql_params["universe_sl"],
-                    group_sl=sql_params["group_sl"],
-                    group=sql_params["group"],
-                    county_geoid=sql_params["county_geoid"],
-                    geofilter_conditions=sql_params["geofilter_conditions"],
+                    universe_sl=candidate_sql_params["universe_sl"],
+                    group_sl=candidate_sql_params["group_sl"],
+                    group=candidate_sql_params["group"],
+                    county_geoid=candidate_sql_params["county_geoid"],
+                    geofilter_conditions=candidate_sql_params["geofilter_conditions"],
                     include_counties_geoids=allowed_county_geoids is not None,
                 )
-                if rows:
+                match_rows = self.primary_repository.query_profile_metric_rows(
+                    comp_column=f"{store}_{key}",
+                    universe_sl=match_sql_params["universe_sl"],
+                    group_sl=match_sql_params["group_sl"],
+                    group=match_sql_params["group"],
+                    county_geoid=match_sql_params["county_geoid"],
+                    geofilter_conditions=match_sql_params["geofilter_conditions"],
+                    include_counties_geoids=allowed_county_geoids is not None,
+                )
+                if candidate_rows and match_rows:
                     results = self._remoteness_from_rows(
-                        rows,
+                        candidate_rows,
+                        match_rows,
                         threshold_value,
                         target_key,
                         store,
@@ -769,28 +781,54 @@ class Engine:
         if not dpi_instances:
             return []
 
-        filtered = self.context_filter(dpi_instances, context, geofilter)
+        candidate_filtered = self.context_filter(dpi_instances, context, geofilter)
+        qualifying_filtered = self.context_filter(dpi_instances, context, match_geofilter)
         if allowed_county_geoids is not None:
-            filtered = [
-                dp for dp in filtered if any(county in allowed_county_geoids for county in dp.counties)
+            candidate_filtered = [
+                dp
+                for dp in candidate_filtered
+                if any(county in allowed_county_geoids for county in dp.counties)
             ]
-        filtered = [
+            qualifying_filtered = [
+                dp
+                for dp in qualifying_filtered
+                if any(county in allowed_county_geoids for county in dp.counties)
+            ]
+        candidate_filtered = [
             dp
-            for dp in filtered
+            for dp in candidate_filtered
             if key in getattr(dp, store)
             and not numpy.isnan(getattr(dp, store)[key])
             and dp.rc.get("latitude") is not None
             and dp.rc.get("longitude") is not None
         ]
-        if not filtered:
+        qualifying_filtered = [
+            dp
+            for dp in qualifying_filtered
+            if key in getattr(dp, store)
+            and not numpy.isnan(getattr(dp, store)[key])
+            and dp.rc.get("latitude") is not None
+            and dp.rc.get("longitude") is not None
+        ]
+        if not candidate_filtered:
             raise ValueError("Sorry, no geographies match your criteria.")
+        if not qualifying_filtered:
+            raise ValueError("Sorry, no qualifying geographies match your criteria.")
 
         if target_key == "below":
-            candidates = [dp for dp in filtered if getattr(dp, store)[key] >= threshold_value]
-            qualifying = [dp for dp in filtered if getattr(dp, store)[key] < threshold_value]
+            candidates = [
+                dp for dp in candidate_filtered if getattr(dp, store)[key] >= threshold_value
+            ]
+            qualifying = [
+                dp for dp in qualifying_filtered if getattr(dp, store)[key] < threshold_value
+            ]
         else:
-            candidates = [dp for dp in filtered if getattr(dp, store)[key] <= threshold_value]
-            qualifying = [dp for dp in filtered if getattr(dp, store)[key] > threshold_value]
+            candidates = [
+                dp for dp in candidate_filtered if getattr(dp, store)[key] <= threshold_value
+            ]
+            qualifying = [
+                dp for dp in qualifying_filtered if getattr(dp, store)[key] > threshold_value
+            ]
 
         if not candidates:
             raise ValueError("Sorry, no candidate geographies remain on the opposite side of the threshold.")
@@ -1089,16 +1127,7 @@ class Engine:
             return []
         return [part for part in raw.strip("|").split("|") if part]
 
-    def _remoteness_from_rows(
-        self,
-        rows,
-        threshold_value,
-        target_key,
-        store,
-        key,
-        n,
-        allowed_county_geoids=None,
-    ):
+    def _entries_from_metric_rows(self, rows, allowed_county_geoids=None):
         entries = []
         for row in rows:
             if len(row) >= 6:
@@ -1122,16 +1151,45 @@ class Engine:
                 "counties": county_geoids,
             }
             entries.append(entry)
+        return entries
 
-        if not entries:
+    def _remoteness_from_rows(
+        self,
+        candidate_rows,
+        qualifying_rows,
+        threshold_value,
+        target_key,
+        store,
+        key,
+        n,
+        allowed_county_geoids=None,
+    ):
+        candidate_entries = self._entries_from_metric_rows(
+            candidate_rows, allowed_county_geoids=allowed_county_geoids
+        )
+        qualifying_entries = self._entries_from_metric_rows(
+            qualifying_rows, allowed_county_geoids=allowed_county_geoids
+        )
+
+        if not candidate_entries:
             raise ValueError("Sorry, no geographies match your criteria.")
+        if not qualifying_entries:
+            raise ValueError("Sorry, no qualifying geographies match your criteria.")
 
         if target_key == "below":
-            candidates = [entry for entry in entries if entry["metric_value"] >= threshold_value]
-            qualifying = [entry for entry in entries if entry["metric_value"] < threshold_value]
+            candidates = [
+                entry for entry in candidate_entries if entry["metric_value"] >= threshold_value
+            ]
+            qualifying = [
+                entry for entry in qualifying_entries if entry["metric_value"] < threshold_value
+            ]
         else:
-            candidates = [entry for entry in entries if entry["metric_value"] <= threshold_value]
-            qualifying = [entry for entry in entries if entry["metric_value"] > threshold_value]
+            candidates = [
+                entry for entry in candidate_entries if entry["metric_value"] <= threshold_value
+            ]
+            qualifying = [
+                entry for entry in qualifying_entries if entry["metric_value"] > threshold_value
+            ]
 
         if not candidates:
             raise ValueError("Sorry, no candidate geographies remain on the opposite side of the threshold.")

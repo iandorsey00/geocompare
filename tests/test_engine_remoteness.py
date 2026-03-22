@@ -91,7 +91,7 @@ def test_remoteness_ranks_candidates_by_distance_to_nearest_below_threshold():
     assert round(results[0]["distance_miles"], 1) > round(results[1]["distance_miles"], 1)
 
 
-def test_remoteness_applies_geofilter_to_population_screen():
+def test_remoteness_applies_geofilter_to_candidates_only_by_default():
     profiles = [
         _profile("Tract A", 5000, 100000, 0.0, 0.0),
         _profile("Tract B", 500, 55000, 0.0, 0.1),
@@ -104,6 +104,28 @@ def test_remoteness_applies_geofilter_to_population_screen():
         75000,
         context="tracts+",
         geofilter="population>=1000",
+        n=10,
+    )
+
+    assert len(results) == 1
+    assert results[0]["candidate"].name == "Tract A"
+    assert results[0]["nearest_match"].name == "Tract B"
+
+
+def test_remoteness_can_filter_qualifying_side_separately():
+    profiles = [
+        _profile("Tract A", 5000, 100000, 0.0, 0.0),
+        _profile("Tract B", 500, 55000, 0.0, 0.1),
+        _profile("Tract C", 4500, 60000, 0.0, 1.0),
+    ]
+    engine = _engine_with_profiles(profiles)
+
+    results = engine.remoteness(
+        "median_household_income",
+        75000,
+        context="tracts+",
+        geofilter="population>=1000",
+        match_geofilter="population>=1000",
         n=10,
     )
 
