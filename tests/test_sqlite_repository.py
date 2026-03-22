@@ -1,6 +1,8 @@
 import sqlite3
 import zlib
+from types import SimpleNamespace
 
+from geocompare.engine import Engine
 from geocompare.repository.serialization import dump_payload
 from geocompare.repository.sqlite_repository import (
     CURRENT_SCHEMA_VERSION,
@@ -89,4 +91,16 @@ def test_get_demographic_profile_supports_compressed_payloads(tmp_path):
 
     profile = repo.get_demographic_profile("Alpha city, California")
     assert profile is not None
+    assert profile.name == "Alpha city, California"
+
+
+def test_engine_get_dp_uses_repository_before_loading_all_data():
+    engine = Engine()
+    engine.primary_repository = SimpleNamespace(
+        get_demographic_profile=lambda name: SimpleNamespace(name=name),
+    )
+    engine._repo_supports = lambda method: method == "get_demographic_profile"
+    engine.get_data_products = lambda: (_ for _ in ()).throw(AssertionError("should not load all data"))
+
+    profile = engine.get_dp("Alpha city, California")[0]
     assert profile.name == "Alpha city, California"

@@ -604,8 +604,6 @@ class Engine:
 
     def get_dp(self, display_label, **kwargs):
         """Get DemographicProfiles."""
-        self.get_data_products()
-
         if self._repo_supports("get_demographic_profile"):
             try:
                 dp = self.primary_repository.get_demographic_profile(display_label)
@@ -614,6 +612,7 @@ class Engine:
             except RuntimeError:
                 pass
 
+        self.get_data_products()
         return [self._lookup_dp(display_label)]
 
     def extreme_values(
