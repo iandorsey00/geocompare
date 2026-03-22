@@ -213,6 +213,19 @@ class SQLiteRepository(DataRepository):
         conn.execute("CREATE INDEX idx_dp_state ON demographic_profiles(state)")
         conn.execute("CREATE INDEX idx_dp_population ON demographic_profiles(population)")
         conn.execute("CREATE INDEX idx_dp_latlon ON demographic_profiles(latitude, longitude)")
+        conn.execute("DROP TABLE IF EXISTS demographic_profiles_fts")
+        conn.execute(
+            """
+            CREATE VIRTUAL TABLE demographic_profiles_fts USING fts5(
+                profile_id UNINDEXED,
+                name,
+                canonical_name,
+                geoid,
+                counties_display,
+                tokenize='unicode61'
+            )
+            """
+        )
 
         column_names = (
             [
@@ -263,6 +276,25 @@ class SQLiteRepository(DataRepository):
 
         if rows:
             conn.executemany(insert_sql, rows)
+
+        fts_rows = [
+            (
+                str(index + 1),
+                dp.name,
+                getattr(dp, "canonical_name", dp.name),
+                getattr(dp, "geoid", "") or "",
+                " ".join(getattr(dp, "counties_display", []) or []),
+            )
+            for index, dp in enumerate(dps)
+        ]
+        if fts_rows:
+            conn.executemany(
+                """
+                INSERT INTO demographic_profiles_fts(profile_id, name, canonical_name, geoid, counties_display)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                fts_rows,
+            )
 
         conn.execute("DROP TABLE IF EXISTS geovectors")
         conn.execute(
@@ -335,7 +367,9 @@ class SQLiteRepository(DataRepository):
 
         try:
             payload = row[0]
-            if isinstance(payload, (bytes, bytearray)) and payload.startswith(_COMPRESSED_PAYLOAD_PREFIX):
+            if isinstance(payload, (bytes, bytearray)) and payload.startswith(
+                _COMPRESSED_PAYLOAD_PREFIX
+            ):
                 payload = zlib.decompress(payload[len(_COMPRESSED_PAYLOAD_PREFIX) :])
             return load_payload(payload)
         except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
@@ -366,7 +400,9 @@ class SQLiteRepository(DataRepository):
 
         try:
             payload = row[0]
-            if isinstance(payload, (bytes, bytearray)) and payload.startswith(_COMPRESSED_PAYLOAD_PREFIX):
+            if isinstance(payload, (bytes, bytearray)) and payload.startswith(
+                _COMPRESSED_PAYLOAD_PREFIX
+            ):
                 payload = zlib.decompress(payload[len(_COMPRESSED_PAYLOAD_PREFIX) :])
             return load_payload(payload)
         except (json.JSONDecodeError, UnicodeDecodeError, ValueError, zlib.error):
@@ -399,7 +435,9 @@ class SQLiteRepository(DataRepository):
                     """
                 ):
                     payload = candidate[0]
-                    if isinstance(payload, (bytes, bytearray)) and payload.startswith(_COMPRESSED_PAYLOAD_PREFIX):
+                    if isinstance(payload, (bytes, bytearray)) and payload.startswith(
+                        _COMPRESSED_PAYLOAD_PREFIX
+                    ):
                         payload = zlib.decompress(payload[len(_COMPRESSED_PAYLOAD_PREFIX) :])
                     profile = load_payload(payload)
                     candidate_geoid = getattr(profile, "geoid", None)
@@ -416,7 +454,9 @@ class SQLiteRepository(DataRepository):
 
         try:
             payload = row[0]
-            if isinstance(payload, (bytes, bytearray)) and payload.startswith(_COMPRESSED_PAYLOAD_PREFIX):
+            if isinstance(payload, (bytes, bytearray)) and payload.startswith(
+                _COMPRESSED_PAYLOAD_PREFIX
+            ):
                 payload = zlib.decompress(payload[len(_COMPRESSED_PAYLOAD_PREFIX) :])
             return load_payload(payload)
         except (json.JSONDecodeError, UnicodeDecodeError, ValueError, zlib.error):
@@ -453,19 +493,41 @@ class SQLiteRepository(DataRepository):
         if not tokens:
             return []
 
+        match_query = " ".join(f"{token}*" for token in tokens)
+
         conn = self._connect()
         try:
-            where_sql = " AND ".join(["name LIKE ?"] * len(tokens))
-            params = [f"%{token}%" for token in tokens]
-            rows = conn.execute(
-                f"""
-                SELECT name
-                FROM demographic_profiles
-                WHERE {where_sql}
-                LIMIT 5000
-                """,
-                params,
-            ).fetchall()
+            tables = {
+                row[0]
+                for row in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type IN ('table', 'view')"
+                ).fetchall()
+            }
+
+            if "demographic_profiles_fts" in tables:
+                rows = conn.execute(
+                    """
+                    SELECT DISTINCT dp.name, dp.payload
+                    FROM demographic_profiles_fts fts
+                    JOIN demographic_profiles dp ON dp.id = CAST(fts.profile_id AS INTEGER)
+                    WHERE demographic_profiles_fts MATCH ?
+                    ORDER BY bm25(demographic_profiles_fts)
+                    LIMIT ?
+                    """,
+                    (match_query, max(n * 10, 25)),
+                ).fetchall()
+            else:
+                where_sql = " AND ".join(["name LIKE ?"] * len(tokens))
+                params = [f"%{token}%" for token in tokens]
+                rows = conn.execute(
+                    f"""
+                    SELECT name, payload
+                    FROM demographic_profiles
+                    WHERE {where_sql}
+                    LIMIT 5000
+                    """,
+                    params,
+                ).fetchall()
         except sqlite3.Error as e:
             raise RuntimeError(f"unexpected sqlite error while searching profiles: {e!r}")
         finally:
@@ -474,8 +536,8 @@ class SQLiteRepository(DataRepository):
         if not rows:
             return []
 
-        best_names = [row[0] for row in heapq.nlargest(n, rows, key=lambda row: fuzz.token_set_ratio(query, row[0]))]
-        return [self.get_demographic_profile(name) for name in best_names if self.get_demographic_profile(name) is not None]
+        best = heapq.nlargest(n, rows, key=lambda row: fuzz.token_set_ratio(query, row[0]))
+        return [load_payload(row[1]) for row in best]
 
     def get_coordinates(self, display_label):
         conn = self._connect()

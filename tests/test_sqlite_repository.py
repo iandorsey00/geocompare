@@ -108,7 +108,9 @@ def test_get_demographic_profile_by_geoid_returns_match(tmp_path):
 
     conn = sqlite3.connect(str(tmp_path / "test.sqlite"))
     try:
-        geoid = conn.execute("SELECT geoid FROM demographic_profiles WHERE name = ?", ("Alpha city, California",)).fetchone()
+        geoid = conn.execute(
+            "SELECT geoid FROM demographic_profiles WHERE name = ?", ("Alpha city, California",)
+        ).fetchone()
     finally:
         conn.close()
 
@@ -122,7 +124,9 @@ def test_engine_get_dp_uses_repository_before_loading_all_data():
         get_demographic_profile=lambda name: SimpleNamespace(name=name),
     )
     engine._repo_supports = lambda method: method == "get_demographic_profile"
-    engine.get_data_products = lambda: (_ for _ in ()).throw(AssertionError("should not load all data"))
+    engine.get_data_products = lambda: (_ for _ in ()).throw(
+        AssertionError("should not load all data")
+    )
 
     profile = engine.get_dp("Alpha city, California")[0]
     assert profile.name == "Alpha city, California"
@@ -131,10 +135,14 @@ def test_engine_get_dp_uses_repository_before_loading_all_data():
 def test_engine_fetch_profile_by_geoid_uses_repository_before_loading_all_data():
     engine = Engine()
     engine.primary_repository = SimpleNamespace(
-        get_demographic_profile_by_geoid=lambda geoid: SimpleNamespace(name="Alpha city, California", geoid=geoid),
+        get_demographic_profile_by_geoid=lambda geoid: SimpleNamespace(
+            name="Alpha city, California", geoid=geoid
+        ),
     )
     engine._repo_supports = lambda method: method == "get_demographic_profile_by_geoid"
-    engine.get_data_products = lambda: (_ for _ in ()).throw(AssertionError("should not load all data"))
+    engine.get_data_products = lambda: (_ for _ in ()).throw(
+        AssertionError("should not load all data")
+    )
 
     profile = engine._fetch_profile_by_geoid("16000US0601000")
     assert profile.name == "Alpha city, California"
@@ -154,7 +162,8 @@ def test_engine_closest_geographies_uses_repository_before_loading_all_data():
     engine._lookup_dp = lambda name: (
         target_profile
         if name == "Alpha city, California"
-        else queried_names.append(name) or {
+        else queried_names.append(name)
+        or {
             "Beta city, California": beta_profile,
             "Gamma city, California": gamma_profile,
         }[name]
@@ -173,7 +182,9 @@ def test_engine_closest_geographies_uses_repository_before_loading_all_data():
         ],
     )
     engine._repo_supports = lambda method: method == "query_profile_coordinates"
-    engine.get_data_products = lambda: (_ for _ in ()).throw(AssertionError("should not load all data"))
+    engine.get_data_products = lambda: (_ for _ in ()).throw(
+        AssertionError("should not load all data")
+    )
 
     rows = engine.closest_geographies("Alpha city, California", context="places+", n=2)
     assert [profile.name for profile, _distance in rows] == [
@@ -181,3 +192,20 @@ def test_engine_closest_geographies_uses_repository_before_loading_all_data():
         "Gamma city, California",
     ]
     assert queried_names == ["Beta city, California", "Gamma city, California"]
+
+
+def test_search_demographic_profiles_uses_fts_and_returns_matches(tmp_path):
+    repo = SQLiteRepository(tmp_path / "test.sqlite")
+    repo.save_data_products(_products())
+
+    rows = repo.search_demographic_profiles("alpha", 5)
+    assert rows
+    assert rows[0].name == "Alpha city, California"
+
+
+def test_search_demographic_profiles_returns_empty_for_nonsense_query(tmp_path):
+    repo = SQLiteRepository(tmp_path / "test.sqlite")
+    repo.save_data_products(_products())
+
+    rows = repo.search_demographic_profiles("fjklfsjfkjds", 5)
+    assert rows == []

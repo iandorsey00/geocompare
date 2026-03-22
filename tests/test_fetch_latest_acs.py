@@ -125,8 +125,28 @@ def test_normalize_tract_gazetteer_rows_matches_current_gazetteer_shape():
     db = Database.__new__(Database)
     rows = db.normalize_tract_gazetteer_rows(
         [
-            ["USPS", "GEOID", "GEOIDFQ", "ALAND", "AWATER", "ALAND_SQMI", "AWATER_SQMI", "INTPTLAT", "INTPTLONG"],
-            ["AL", "01001020100", "1400000US01001020100", "9825303", "28435", "3.794", "0.011", "32.4819731", "-86.4915648"],
+            [
+                "USPS",
+                "GEOID",
+                "GEOIDFQ",
+                "ALAND",
+                "AWATER",
+                "ALAND_SQMI",
+                "AWATER_SQMI",
+                "INTPTLAT",
+                "INTPTLONG",
+            ],
+            [
+                "AL",
+                "01001020100",
+                "1400000US01001020100",
+                "9825303",
+                "28435",
+                "3.794",
+                "0.011",
+                "32.4819731",
+                "-86.4915648",
+            ],
         ]
     )
 

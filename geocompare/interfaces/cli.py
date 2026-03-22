@@ -143,7 +143,9 @@ class GeoCompareCLI:
             "remoteness",
             help="rank geographies by distance to the nearest geography across a threshold",
         )
-        remoteness_parser.add_argument("data_identifier", help="metric used for the threshold split")
+        remoteness_parser.add_argument(
+            "data_identifier", help="metric used for the threshold split"
+        )
         remoteness_parser.add_argument("threshold", help="numeric threshold for the metric")
         remoteness_parser.add_argument(
             "--target",
@@ -176,9 +178,7 @@ class GeoCompareCLI:
             action="store_true",
             help="include land area in square miles",
         )
-        remoteness_parser.add_argument(
-            "-n", type=int, default=15, help="number of rows to display"
-        )
+        remoteness_parser.add_argument("-n", type=int, default=15, help="number of rows to display")
         self._add_label_arg(remoteness_parser)
         remoteness_parser.set_defaults(func=self.remoteness)
 
@@ -186,7 +186,9 @@ class GeoCompareCLI:
             "local-average",
             help="rank geographies by the distance-weighted local average of a metric",
         )
-        local_average_parser.add_argument("data_identifier", help="metric used for the local average")
+        local_average_parser.add_argument(
+            "data_identifier", help="metric used for the local average"
+        )
         local_average_parser.add_argument(
             "--neighbors",
             type=int,
@@ -211,7 +213,10 @@ class GeoCompareCLI:
         self._add_filter_arg(local_average_parser)
         self._add_context_args(local_average_parser)
         local_average_parser.add_argument(
-            "-k", "--kilometers", action="store_true", help="display neighborhood span in kilometers"
+            "-k",
+            "--kilometers",
+            action="store_true",
+            help="display neighborhood span in kilometers",
         )
         local_average_parser.add_argument(
             "-n", type=int, default=15, help="number of rows to display"
@@ -219,7 +224,9 @@ class GeoCompareCLI:
         self._add_label_arg(local_average_parser)
         local_average_parser.set_defaults(func=self.local_average)
 
-        dist_parser = query_subparsers.add_parser("distance", help="distance between two geographies")
+        dist_parser = query_subparsers.add_parser(
+            "distance", help="distance between two geographies"
+        )
         dist_parser.add_argument("display_label_1", help="first geography")
         dist_parser.add_argument("display_label_2", help="second geography")
         dist_parser.add_argument(
@@ -409,7 +416,9 @@ class GeoCompareCLI:
             iam = " "
             out_str = (
                 iam
-                + self._fit(self._display_name(dpi, args.official_labels), name_width, truncate=truncate)
+                + self._fit(
+                    self._display_name(dpi, args.official_labels), name_width, truncate=truncate
+                )
                 + iam
                 + getattr(dpi, "fc")["population"].rjust(20)
             )
@@ -433,7 +442,9 @@ class GeoCompareCLI:
         if len(dp_list) == 0:
             self._eprint("Sorry, there is no geography with that name.")
             return
-        print(self._display_profile(dp_list[0], args.official_labels).to_table(view=args.profile_view))
+        print(
+            self._display_profile(dp_list[0], args.official_labels).to_table(view=args.profile_view)
+        )
 
     def _profile_metric_value(self, dp, row_mode, key):
         if not dp._can_render_row(row_mode, key):
@@ -612,7 +623,9 @@ class GeoCompareCLI:
             cid = match["canonical_id"] if args.wide else match["canonical_id"][:36]
             display_name = (
                 match.get("canonical_name")
-                if args.official_labels and match.get("sumlevel") == "140" and match.get("canonical_name")
+                if args.official_labels
+                and match.get("sumlevel") == "140"
+                and match.get("canonical_name")
                 else match["name"]
             )
             print(
@@ -862,10 +875,14 @@ class GeoCompareCLI:
 
         displayed_rows = results[: getattr(args, "n", len(results))]
         population_values = [row["candidate"].fc["population"] for row in displayed_rows]
-        area_values = [
-            self._display_area(row["candidate"], square_kilometers=args.kilometers)
-            for row in displayed_rows
-        ] if args.show_area else []
+        area_values = (
+            [
+                self._display_area(row["candidate"], square_kilometers=args.kilometers)
+                for row in displayed_rows
+            ]
+            if args.show_area
+            else []
+        )
         candidate_values = [
             self._display_name(row["candidate"], args.official_labels) for row in displayed_rows
         ]
@@ -881,7 +898,9 @@ class GeoCompareCLI:
 
         candidate_width = max(44, len("Candidate"))
         population_width = max(len("Pop"), *(len(value) for value in population_values))
-        area_width = max(len(area_label), *(len(value) for value in area_values)) if args.show_area else 0
+        area_width = (
+            max(len(area_label), *(len(value) for value in area_values)) if args.show_area else 0
+        )
         metric_width = max(len("Value"), *(len(value) for value in metric_values))
         nearest_width = max(31, len("Nearest qualifying geography"))
         distance_width = max(len(distance_label), *(len(value) for value in distance_values))
@@ -905,14 +924,24 @@ class GeoCompareCLI:
         print(
             " "
             + " ".join(
-                self._fit_right(header, column_width, truncate=False)
-                if right_align
-                else self._fit(header, column_width, truncate=False)
+                (
+                    self._fit_right(header, column_width, truncate=False)
+                    if right_align
+                    else self._fit(header, column_width, truncate=False)
+                )
                 for header, column_width, right_align in columns
             )
         )
         print("-" * width)
-        for row, candidate_name, nearest_name, candidate_metric, nearest_metric, area_value, distance_text in zip(
+        for (
+            row,
+            candidate_name,
+            nearest_name,
+            candidate_metric,
+            nearest_metric,
+            area_value,
+            distance_text,
+        ) in zip(
             displayed_rows,
             candidate_values,
             nearest_values,
@@ -970,7 +999,10 @@ class GeoCompareCLI:
         ]
         population_values = [row["candidate"].fc["population"] for row in displayed_rows]
         metric_values = [metric_value(row["candidate"]) for row in displayed_rows]
-        average_values = [self.engine._format_profile_component(key, row["local_average"]) for row in displayed_rows]
+        average_values = [
+            self.engine._format_profile_component(key, row["local_average"])
+            for row in displayed_rows
+        ]
         span_values = [
             f"{(row['neighbor_span_miles'] * 1.609344 if args.kilometers else row['neighbor_span_miles']):.1f}"
             for row in displayed_rows
@@ -993,9 +1025,11 @@ class GeoCompareCLI:
         print(
             " "
             + " ".join(
-                self._fit_right(header, column_width, truncate=False)
-                if right_align
-                else self._fit(header, column_width, truncate=False)
+                (
+                    self._fit_right(header, column_width, truncate=False)
+                    if right_align
+                    else self._fit(header, column_width, truncate=False)
+                )
                 for header, column_width, right_align in columns
             )
         )

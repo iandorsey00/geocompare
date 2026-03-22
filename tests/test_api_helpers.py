@@ -21,7 +21,10 @@ def _profile(name, official_name, sumlevel="140"):
 
 
 def test_serialize_profile_honors_official_labels_for_tracts():
-    profile = _profile("4515.05, near Livermore, Alameda County, CA", "Census Tract 4515.05, Alameda County, California")
+    profile = _profile(
+        "4515.05, near Livermore, Alameda County, CA",
+        "Census Tract 4515.05, Alameda County, California",
+    )
 
     humanized = _serialize_profile(profile, official_labels=False, include_metrics=False)
     official = _serialize_profile(profile, official_labels=True, include_metrics=False)
