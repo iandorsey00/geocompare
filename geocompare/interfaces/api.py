@@ -359,8 +359,9 @@ def create_app():
     ):
         service = get_service()
         try:
+            profile_obj = service.get_dp(display_label=name)[0]
             rows = service.closest_geographies(
-                display_label=name,
+                display_label=profile_obj.name,
                 context=scope,
                 geofilter=where,
                 n=n,
