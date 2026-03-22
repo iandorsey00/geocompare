@@ -46,3 +46,26 @@ def test_resolve_data_identifier_rejects_unknown_identifier():
     engine = Engine.__new__(Engine)
     with pytest.raises(ValueError):
         engine.resolve_data_identifier("democratic_voters_pc", _fetch_one_stub())
+
+
+def test_resolve_data_identifier_loads_index_before_falling_back_to_probe_profile():
+    engine = Engine.__new__(Engine)
+    engine.d = None
+    engine._data_identifier_index = {}
+    engine.get_data_products = lambda: {
+        "demographicprofiles": [],
+    }
+    engine._data_identifier_index = {
+        "violent_crime_rate": {
+            "key": "violent_crime_rate",
+            "store": "c",
+            "display_store": "fcd",
+            "label": "Violent crime rate per 100k",
+        }
+    }
+
+    resolved = engine.resolve_data_identifier("violent_crime_rate", _fetch_one_stub())
+
+    assert resolved["store"] == "c"
+    assert resolved["display_store"] == "fcd"
+    assert resolved["key"] == "violent_crime_rate"

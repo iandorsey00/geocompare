@@ -383,7 +383,7 @@ class Engine:
         self._set_data_products(self.load_data_products())
 
     def get_data_products(self):
-        if self.d is None:
+        if getattr(self, "d", None) is None:
             self.refresh_cache()
         return self.d
 
@@ -509,7 +509,10 @@ class Engine:
         }
 
     def list_data_identifiers(self, fetch_one):
-        if getattr(self, "d", None) is not None:
+        if (
+            getattr(self, "d", None) is None
+            and getattr(self, "primary_repository", None) is not None
+        ):
             self.get_data_products()
         if getattr(self, "_data_identifier_index", None):
             return sorted(self._data_identifier_index.keys())
@@ -526,7 +529,10 @@ class Engine:
         if not requested:
             raise ValueError("Missing data identifier.")
 
-        if getattr(self, "d", None) is not None:
+        if (
+            getattr(self, "d", None) is None
+            and getattr(self, "primary_repository", None) is not None
+        ):
             self.get_data_products()
         if requested in getattr(self, "_data_identifier_index", {}):
             return self._data_identifier_index[requested]
