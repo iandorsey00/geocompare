@@ -12,6 +12,7 @@ from rapidfuzz import fuzz
 
 from geocompare.repository.base import DataRepository
 from geocompare.repository.serialization import dump_payload, load_payload
+import re
 
 CURRENT_SCHEMA_VERSION = 1
 _COMPRESSED_PAYLOAD_PREFIX = b"Z1:"
