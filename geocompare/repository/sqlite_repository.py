@@ -489,11 +489,12 @@ class SQLiteRepository(DataRepository):
         if n <= 0:
             return []
 
-        tokens = [token for token in str(query or "").split() if token]
+        raw_query = str(query or "").strip()
+        tokens = [token for token in re.findall(r"[A-Za-z0-9]+", raw_query) if token]
         if not tokens:
             return []
 
-        match_query = " ".join(f"{token}*" for token in tokens)
+        match_query = " ".join(f'"{token}"*' for token in tokens)
 
         conn = self._connect()
         try:
@@ -536,7 +537,7 @@ class SQLiteRepository(DataRepository):
         if not rows:
             return []
 
-        best = heapq.nlargest(n, rows, key=lambda row: fuzz.token_set_ratio(query, row[0]))
+        best = heapq.nlargest(n, rows, key=lambda row: fuzz.token_set_ratio(raw_query, row[0]))
         return [load_payload(row[1]) for row in best]
 
     def get_coordinates(self, display_label):
