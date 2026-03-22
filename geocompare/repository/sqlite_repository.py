@@ -394,11 +394,11 @@ class SQLiteRepository(DataRepository):
                     """
                     SELECT payload
                     FROM demographic_profiles
-                    WHERE payload LIKE ?
+                    WHERE payload LIKE ? OR payload LIKE ?
                     ORDER BY population DESC
                     LIMIT 1
                     """,
-                    (f'%"{geoid}"%',),
+                    (f'%"{geoid}"%', f'%US{geoid}%'),
                 ).fetchone()
         except sqlite3.Error as e:
             raise RuntimeError(f"unexpected sqlite error while loading profile by geoid: {e!r}")
