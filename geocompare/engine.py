@@ -549,6 +549,16 @@ class Engine:
                 "label": fetch_one.rh.get(requested, self._format_identifier_label(requested)),
             }
 
+        if requested in fetch_one.c and requested in fetch_one.rc:
+            base_label = fetch_one.rh.get(requested, self._format_identifier_label(requested))
+            return {
+                "requested": requested,
+                "key": requested,
+                "store": "c",
+                "display_store": "fcd",
+                "label": f"{base_label} (%)",
+            }
+
         if requested.endswith("_pct"):
             base_key = requested[:-4]
             if base_key in fetch_one.c:
