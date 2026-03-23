@@ -531,6 +531,22 @@ class Engine:
         if requested in getattr(self, "_data_identifier_index", {}):
             return self._data_identifier_index[requested]
 
+        explicit_compound_aliases = {
+            "registered_voters_pct": ("registered_voters", "Registered voters (%)"),
+            "democratic_voters_pct": ("democratic_voters", "Democratic voters (%)"),
+            "republican_voters_pct": ("republican_voters", "Republican voters (%)"),
+            "other_voters_pct": ("other_voters", "Other voters (%)"),
+        }
+        if requested in explicit_compound_aliases:
+            base_key, label = explicit_compound_aliases[requested]
+            return {
+                "requested": requested,
+                "key": base_key,
+                "store": "c",
+                "display_store": "fcd",
+                "label": label,
+            }
+
         if requested in fetch_one.rc:
             return {
                 "requested": requested,
