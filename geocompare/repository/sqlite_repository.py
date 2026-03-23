@@ -123,11 +123,12 @@ class SQLiteRepository(DataRepository):
         return f"idx_dp_comp_{digest}"
 
     def _ensure_order_index(self, conn, column_name):
+        # Ranking requests must not create indexes on demand in the live path.
+        # On large SQLite files that can dominate the whole request and lead to
+        # timeouts or 502s. We still validate the column exists here so callers
+        # fail fast on bad metric names, but leave index creation to build-time
+        # database generation.
         self._ensure_column(conn, "demographic_profiles", column_name)
-        index_name = self._index_name_for_column(column_name)
-        conn.execute(
-            f"CREATE INDEX IF NOT EXISTS {index_name} ON demographic_profiles({column_name})"
-        )
 
     def _build_profile_where_sql(
         self,
