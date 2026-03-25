@@ -28,6 +28,7 @@ def _serialize_profile(profile, official_labels=False, include_metrics=True):
         "sumlevel": getattr(profile, "sumlevel", None),
         "state": getattr(profile, "state", None),
         "geoid": getattr(profile, "geoid", None),
+        "population": getattr(profile, "rc", {}).get("population") if getattr(profile, "rc", None) else None,
         "counties": list(getattr(profile, "counties", []) or []),
         "counties_display": list(getattr(profile, "counties_display", []) or []),
     }
