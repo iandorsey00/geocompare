@@ -4,7 +4,7 @@
 
 - Project: `geocompare`
 - Branch: `master`
-- Version: `0.9.0`
+- Version: `0.10.0`
 
 ## Scope
 
@@ -28,6 +28,7 @@ remote access or lightweight deployments.
   - `nearest`
   - `remoteness`
   - `local-average`
+- map-link generation for CLI-selected geographies
 - candidate-side and qualifying-side remoteness filtering
 - county-proxy filtering for large-county exploration
 - built-in `sources` command for ACS and base-overlay provenance
@@ -52,6 +53,7 @@ remote access or lightweight deployments.
 - Common queries:
   - `geocompare query search ...`
   - `geocompare query profile ...`
+  - `geocompare query map-links ...`
   - `geocompare query remoteness ...`
   - `geocompare query local-average ...`
   - `geocompare sources`
