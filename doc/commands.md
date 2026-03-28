@@ -55,7 +55,15 @@ geocompare query search "san" --format json
 geocompare query profile "San Francisco city, California"
 geocompare query profile "San Francisco city, California" --profile-view compact
 geocompare query profile-compare "Mission Viejo city, California" "Carlsbad city, California"
+geocompare query map-links "San Francisco city, California"
 ```
+
+`query map-links` prints:
+
+- an Open in Google Maps URL
+- a Random Google Street View URL
+
+The first version uses the geography centroid and a randomized Street View heading.
 
 ### Similar
 

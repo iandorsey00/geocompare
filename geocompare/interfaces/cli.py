@@ -7,6 +7,7 @@ import sys
 
 from geocompare import __version__
 from geocompare.services.query_service import QueryService
+from geocompare.tools.map_links import profile_map_links
 from geocompare.tools.query_syntax import build_context
 
 
@@ -92,6 +93,12 @@ class GeoCompareCLI:
         )
         self._add_label_arg(profile_parser)
         profile_parser.set_defaults(func=self.get_dp)
+
+        map_links_parser = query_subparsers.add_parser(
+            "map-links", help="print Google Maps and Street View URLs for one geography"
+        )
+        map_links_parser.add_argument("display_label", help="the exact geography name")
+        map_links_parser.set_defaults(func=self.map_links)
 
         profile_compare_parser = query_subparsers.add_parser(
             "profile-compare", help="compare multiple demographic profiles line by line"
@@ -422,6 +429,17 @@ class GeoCompareCLI:
         display_geo.name = getattr(geography, "canonical_name", geography.name)
         return display_geo
 
+    def _get_single_profile(self, display_label):
+        try:
+            dp_list = self.engine.get_dp(display_label=display_label)
+        except ValueError:
+            self._eprint("Sorry, there is no geography with that name.")
+            return None
+        if len(dp_list) == 0:
+            self._eprint("Sorry, there is no geography with that name.")
+            return None
+        return dp_list[0]
+
     def _display_area(self, geography, square_kilometers=False):
         raw_value = getattr(geography, "rc", {}).get("land_area")
         if raw_value in {None, ""}:
@@ -488,13 +506,24 @@ class GeoCompareCLI:
         print(print_search_divider())
 
     def get_dp(self, args):
-        dp_list = self.engine.get_dp(**vars(args))
-        if len(dp_list) == 0:
-            self._eprint("Sorry, there is no geography with that name.")
+        dp = self._get_single_profile(args.display_label)
+        if dp is None:
             return
-        print(
-            self._display_profile(dp_list[0], args.official_labels).to_table(view=args.profile_view)
-        )
+        print(self._display_profile(dp, args.official_labels).to_table(view=args.profile_view))
+
+    def map_links(self, args):
+        dp = self._get_single_profile(args.display_label)
+        if dp is None:
+            return
+
+        try:
+            links = profile_map_links(dp)
+        except ValueError as exc:
+            self._eprint(str(exc))
+            return
+
+        print(f"Open in Google Maps URL: {links['google_maps_url']}")
+        print(f"Random Google Street View URL: {links['google_street_view_url']}")
 
     def _profile_metric_value(self, dp, row_mode, key):
         if not dp._can_render_row(row_mode, key):
@@ -1109,7 +1138,9 @@ class GeoCompareCLI:
         self.engine.rows(**vars(args))
 
     def get_csv_dp(self, args):
-        dp = self.engine.get_dp(display_label=args.display_label)[0]
+        dp = self._get_single_profile(args.display_label)
+        if dp is None:
+            return
         self._display_profile(dp, args.official_labels).tocsv(view=args.profile_view)
 
 
