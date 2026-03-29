@@ -42,6 +42,8 @@ geocompare-api
 - `GET /health`
 - `GET /search?q=...&n=...`
 - `GET /profile?name=...`
+- `GET /similar?name=...`
+- `GET /similar-form?name=...`
 - `GET /resolve?query=...`
 - `GET /remoteness?...`
 - `GET /local-average?...`

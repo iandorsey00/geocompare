@@ -28,7 +28,9 @@ def _serialize_profile(profile, official_labels=False, include_metrics=True):
         "sumlevel": getattr(profile, "sumlevel", None),
         "state": getattr(profile, "state", None),
         "geoid": getattr(profile, "geoid", None),
-        "population": getattr(profile, "rc", {}).get("population") if getattr(profile, "rc", None) else None,
+        "population": (
+            getattr(profile, "rc", {}).get("population") if getattr(profile, "rc", None) else None
+        ),
         "counties": list(getattr(profile, "counties", []) or []),
         "counties_display": list(getattr(profile, "counties_display", []) or []),
     }
@@ -42,15 +44,21 @@ def _resolve_metric_display(service, data_identifier, sample_profile):
     return resolved["display_store"], resolved["key"], resolved["label"]
 
 
-def _serialize_remoteness_row(service, row, data_identifier, official_labels=False, kilometers=False):
+def _serialize_remoteness_row(
+    service, row, data_identifier, official_labels=False, kilometers=False
+):
     candidate = row["candidate"]
     nearest = row["nearest_match"]
     display_store, key, label = _resolve_metric_display(service, data_identifier, candidate)
     distance_miles = float(row["distance_miles"])
     distance = distance_miles * 1.609344 if kilometers else distance_miles
     return {
-        "candidate": _serialize_profile(candidate, official_labels=official_labels, include_metrics=False),
-        "nearest_match": _serialize_profile(nearest, official_labels=official_labels, include_metrics=False),
+        "candidate": _serialize_profile(
+            candidate, official_labels=official_labels, include_metrics=False
+        ),
+        "nearest_match": _serialize_profile(
+            nearest, official_labels=official_labels, include_metrics=False
+        ),
         "metric_label": label,
         "candidate_value": getattr(candidate, display_store)[key],
         "nearest_match_value": getattr(nearest, display_store)[key],
@@ -72,7 +80,9 @@ def _serialize_local_average_row(
     span_miles = float(row["neighbor_span_miles"])
     span = span_miles * 1.609344 if kilometers else span_miles
     return {
-        "candidate": _serialize_profile(candidate, official_labels=official_labels, include_metrics=False),
+        "candidate": _serialize_profile(
+            candidate, official_labels=official_labels, include_metrics=False
+        ),
         "metric_label": label,
         "candidate_value": getattr(candidate, display_store)[key],
         "local_average": float(row["local_average"]),
@@ -85,7 +95,9 @@ def _serialize_local_average_row(
 def _serialize_ranking_row(service, profile, data_identifier, official_labels=False):
     display_store, key, label = _resolve_metric_display(service, data_identifier, profile)
     return {
-        "geography": _serialize_profile(profile, official_labels=official_labels, include_metrics=False),
+        "geography": _serialize_profile(
+            profile, official_labels=official_labels, include_metrics=False
+        ),
         "metric_label": label,
         "metric_value": getattr(profile, display_store)[key],
     }
@@ -94,10 +106,21 @@ def _serialize_ranking_row(service, profile, data_identifier, official_labels=Fa
 def _serialize_nearest_row(profile, distance_miles, official_labels=False, kilometers=False):
     distance = float(distance_miles) * 1.609344 if kilometers else float(distance_miles)
     return {
-        "geography": _serialize_profile(profile, official_labels=official_labels, include_metrics=False),
+        "geography": _serialize_profile(
+            profile, official_labels=official_labels, include_metrics=False
+        ),
         "distance_miles": float(distance_miles),
         "distance": distance,
         "distance_unit": "km" if kilometers else "mi",
+    }
+
+
+def _serialize_similarity_row(reference, profile, mode, official_labels=False):
+    return {
+        "geography": _serialize_profile(
+            profile, official_labels=official_labels, include_metrics=False
+        ),
+        "distance": float(reference.distance(profile, mode=mode)),
     }
 
 
@@ -130,6 +153,42 @@ def create_app():
 
     app = FastAPI(title="GeoCompare API", version="0.8.0")
 
+    def _translate_similarity_error(exc):
+        message = str(exc)
+        if message.startswith("No geography found for display label:"):
+            return HTTPException(status_code=404, detail=message)
+        return HTTPException(status_code=400, detail=message)
+
+    def _validate_similarity_scope(universe, universes, where):
+        if universe and universes:
+            raise HTTPException(
+                status_code=400, detail="Use either universe or universes, not both."
+            )
+        if where:
+            raise HTTPException(
+                status_code=400,
+                detail="where is not supported for similarity endpoints.",
+            )
+
+    def _similarity_context(universe):
+        return f"{universe}+" if universe else ""
+
+    def _similarity_response(name, mode, rows, official_labels=False):
+        return {
+            "query": name,
+            "mode": "similar-form" if mode == "app" else "similar",
+            "count": len(rows),
+            "results": [
+                _serialize_similarity_row(
+                    rows[0],
+                    row,
+                    mode=mode,
+                    official_labels=official_labels,
+                )
+                for row in rows
+            ],
+        }
+
     @app.get("/health")
     def health():
         service = get_service()
@@ -145,10 +204,7 @@ def create_app():
         return {
             "query": q,
             "count": len(results),
-            "results": [
-                _serialize_profile(profile, include_metrics=False)
-                for profile in results
-            ],
+            "results": [_serialize_profile(profile, include_metrics=False) for profile in results],
         }
 
     @app.get("/profile")
@@ -163,7 +219,9 @@ def create_app():
                 profile_obj = service._fetch_profile_by_name(name)
         except ValueError as exc:
             raise HTTPException(status_code=404, detail=str(exc))
-        return _serialize_profile(profile_obj, official_labels=official_labels, include_metrics=True)
+        return _serialize_profile(
+            profile_obj, official_labels=official_labels, include_metrics=True
+        )
 
     @app.get("/sources")
     def sources():
@@ -173,6 +231,64 @@ def create_app():
             "count": len(rows),
             "results": rows,
         }
+
+    @app.get("/similar")
+    def similar(
+        name: str,
+        universe: str | None = None,
+        universes: str | None = None,
+        where: str = "",
+        n: int = Query(15, ge=1, le=100),
+        official_labels: bool = False,
+    ):
+        _validate_similarity_scope(universe, universes, where)
+        service = get_service()
+        try:
+            rows = service.compare_geovectors(
+                display_label=name,
+                context=_similarity_context(universe),
+                universes=universes,
+                n=n,
+                mode="std",
+            )
+        except ValueError as exc:
+            raise _translate_similarity_error(exc)
+
+        return _similarity_response(
+            name=name,
+            mode="std",
+            rows=rows,
+            official_labels=official_labels,
+        )
+
+    @app.get("/similar-form")
+    def similar_form(
+        name: str,
+        universe: str | None = None,
+        universes: str | None = None,
+        where: str = "",
+        n: int = Query(15, ge=1, le=100),
+        official_labels: bool = False,
+    ):
+        _validate_similarity_scope(universe, universes, where)
+        service = get_service()
+        try:
+            rows = service.compare_geovectors(
+                display_label=name,
+                context=_similarity_context(universe),
+                universes=universes,
+                n=n,
+                mode="app",
+            )
+        except ValueError as exc:
+            raise _translate_similarity_error(exc)
+
+        return _similarity_response(
+            name=name,
+            mode="app",
+            rows=rows,
+            official_labels=official_labels,
+        )
 
     @app.get("/resolve")
     def resolve(
@@ -312,7 +428,11 @@ def create_app():
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
 
-        metric_label = _resolve_metric_display(service, data_identifier, rows[0])[2] if rows else data_identifier
+        metric_label = (
+            _resolve_metric_display(service, data_identifier, rows[0])[2]
+            if rows
+            else data_identifier
+        )
 
         return {
             "data_identifier": data_identifier,
@@ -349,7 +469,11 @@ def create_app():
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
 
-        metric_label = _resolve_metric_display(service, data_identifier, rows[0])[2] if rows else data_identifier
+        metric_label = (
+            _resolve_metric_display(service, data_identifier, rows[0])[2]
+            if rows
+            else data_identifier
+        )
 
         return {
             "data_identifier": data_identifier,

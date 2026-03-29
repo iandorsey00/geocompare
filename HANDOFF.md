@@ -4,7 +4,7 @@
 
 - Project: `geocompare`
 - Branch: `master`
-- Version: `0.13.1`
+- Version: `0.14.0`
 
 ## Scope
 
@@ -51,6 +51,8 @@ remote access or lightweight deployments.
 - county-proxy filtering for large-county exploration
 - built-in `sources` command for ACS and base-overlay provenance
 - optional API via `geocompare-api`
+  - API now exposes `similar` and `similar-form` endpoints for GeoCompare-Web
+    and other lightweight clients
 
 ## Data Model Notes
 
