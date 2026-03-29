@@ -509,19 +509,27 @@ class Engine:
 
         return conditions
 
-    def _build_sql_query_params(self, context, geofilter, fetch_one):
+    def _build_sql_query_params(self, context, geofilter, fetch_one, universes=None):
         universe_sl, group_sl, group = self.slt.unpack_context(context)
         county_geoid = None
         if group_sl == "050":
             county_geoid = self._get_county_geoid(group)
+        universe_sls = self._parse_universes(universes)
 
         return {
             "universe_sl": universe_sl,
+            "universe_sls": universe_sls,
             "group_sl": group_sl,
             "group": group,
             "county_geoid": county_geoid,
             "geofilter_conditions": self._build_sql_geofilter_conditions(geofilter, fetch_one),
         }
+
+    def _parse_universes(self, universes):
+        parser = getattr(self.slt, "parse_universes", None)
+        if parser is None:
+            return None
+        return parser(universes)
 
     def list_data_identifiers(self, fetch_one):
         if not getattr(self, "_data_identifier_index", None) and fetch_one is not None:
@@ -618,7 +626,7 @@ class Engine:
             suggestion_suffix = " Did you mean: " + ", ".join(suggestions) + "?"
         raise ValueError(f"Unknown data identifier: {data_identifier}.{suggestion_suffix}")
 
-    def context_filter(self, input_instances, context, geofilter, gv=False):
+    def context_filter(self, input_instances, context, geofilter, gv=False, universe_sls=None):
         """Filters instances and leaves those that match the context."""
         if len(input_instances) == 0:
             return []
@@ -628,7 +636,9 @@ class Engine:
         fetch_one = instances[0]
 
         # Filter by summary level
-        if universe_sl:
+        if universe_sls:
+            instances = list(filter(lambda x: x.sumlevel in universe_sls, instances))
+        elif universe_sl:
             instances = list(filter(lambda x: x.sumlevel == universe_sl, instances))
 
         # Filter by group summary level
@@ -681,11 +691,15 @@ class Engine:
 
         universe_sl, group_sl, group = self.slt.unpack_context(context)
         county_geoid = self._get_county_geoid(group) if group_sl == "050" else None
+        universe_sls = self._parse_universes(kwargs.get("universes"))
+        target_universes = universe_sls or (
+            [universe_sl] if universe_sl else [comparison_gv.sumlevel]
+        )
 
         if self._repo_supports("list_geovectors"):
             try:
                 gv_list = self.primary_repository.list_geovectors(
-                    universe_sl=universe_sl or comparison_gv.sumlevel,
+                    universe_sls=target_universes,
                     group_sl=group_sl,
                     group=group,
                     county_geoid=county_geoid,
@@ -699,9 +713,13 @@ class Engine:
 
         # If a context was specified, filter GeoVector instances
         if context:
-            gv_list = self.context_filter(gv_list, context, False)
+            gv_list = self.context_filter(gv_list, context, False, universe_sls=universe_sls)
         else:
-            gv_list = list(filter(lambda x: x.sumlevel == comparison_gv.sumlevel, gv_list))
+            gv_list = (
+                list(filter(lambda x: x.sumlevel in universe_sls, gv_list))
+                if universe_sls
+                else list(filter(lambda x: x.sumlevel == comparison_gv.sumlevel, gv_list))
+            )
 
         if n <= 0:
             return []
@@ -736,7 +754,9 @@ class Engine:
             n = len(self.d["demographicprofiles"])
 
         if self._repo_supports("query_extreme_profile_names"):
-            sql_params = self._build_sql_query_params(context, geofilter, fetch_one)
+            sql_params = self._build_sql_query_params(
+                context, geofilter, fetch_one, universes=kwargs.get("universes")
+            )
 
             exclude_values = []
             if key == "median_year_structure_built" and sort_by == "rc":
@@ -746,6 +766,7 @@ class Engine:
                 names = self.primary_repository.query_extreme_profile_names(
                     comp_column=f"{sort_by}_{key}",
                     universe_sl=sql_params["universe_sl"],
+                    universe_sls=sql_params["universe_sls"],
                     group_sl=sql_params["group_sl"],
                     group=sql_params["group"],
                     county_geoid=sql_params["county_geoid"],
@@ -767,7 +788,12 @@ class Engine:
         )
 
         # Filter instances
-        dpi_instances = self.context_filter(dpi_instances, context, geofilter)
+        dpi_instances = self.context_filter(
+            dpi_instances,
+            context,
+            geofilter,
+            universe_sls=self._parse_universes(kwargs.get("universes")),
+        )
 
         # For the median_year_structure_built component, remove values of zero and
         # 18...
@@ -828,11 +854,16 @@ class Engine:
 
         if self._repo_supports("query_profile_metric_rows"):
             try:
-                candidate_sql_params = self._build_sql_query_params(context, geofilter, fetch_one)
-                match_sql_params = self._build_sql_query_params(context, match_geofilter, fetch_one)
+                candidate_sql_params = self._build_sql_query_params(
+                    context, geofilter, fetch_one, universes=kwargs.get("universes")
+                )
+                match_sql_params = self._build_sql_query_params(
+                    context, match_geofilter, fetch_one, universes=kwargs.get("universes")
+                )
                 candidate_rows = self.primary_repository.query_profile_metric_rows(
                     comp_column=f"{store}_{key}",
                     universe_sl=candidate_sql_params["universe_sl"],
+                    universe_sls=candidate_sql_params["universe_sls"],
                     group_sl=candidate_sql_params["group_sl"],
                     group=candidate_sql_params["group"],
                     county_geoid=candidate_sql_params["county_geoid"],
@@ -842,6 +873,7 @@ class Engine:
                 match_rows = self.primary_repository.query_profile_metric_rows(
                     comp_column=f"{store}_{key}",
                     universe_sl=match_sql_params["universe_sl"],
+                    universe_sls=match_sql_params["universe_sls"],
                     group_sl=match_sql_params["group_sl"],
                     group=match_sql_params["group"],
                     county_geoid=match_sql_params["county_geoid"],
@@ -868,8 +900,18 @@ class Engine:
         if not dpi_instances:
             return []
 
-        candidate_filtered = self.context_filter(dpi_instances, context, geofilter)
-        qualifying_filtered = self.context_filter(dpi_instances, context, match_geofilter)
+        candidate_filtered = self.context_filter(
+            dpi_instances,
+            context,
+            geofilter,
+            universe_sls=self._parse_universes(kwargs.get("universes")),
+        )
+        qualifying_filtered = self.context_filter(
+            dpi_instances,
+            context,
+            match_geofilter,
+            universe_sls=self._parse_universes(kwargs.get("universes")),
+        )
         if allowed_county_geoids is not None:
             candidate_filtered = [
                 dp
@@ -986,10 +1028,13 @@ class Engine:
 
         if self._repo_supports("query_profile_metric_rows"):
             try:
-                sql_params = self._build_sql_query_params(context, geofilter, fetch_one)
+                sql_params = self._build_sql_query_params(
+                    context, geofilter, fetch_one, universes=kwargs.get("universes")
+                )
                 rows = self.primary_repository.query_profile_metric_rows(
                     comp_column=f"{store}_{key}",
                     universe_sl=sql_params["universe_sl"],
+                    universe_sls=sql_params["universe_sls"],
                     group_sl=sql_params["group_sl"],
                     group=sql_params["group"],
                     county_geoid=sql_params["county_geoid"],
@@ -1014,7 +1059,12 @@ class Engine:
         if not dpi_instances:
             return []
 
-        filtered = self.context_filter(dpi_instances, context, geofilter)
+        filtered = self.context_filter(
+            dpi_instances,
+            context,
+            geofilter,
+            universe_sls=self._parse_universes(kwargs.get("universes")),
+        )
         if allowed_county_geoids is not None:
             filtered = [
                 dp
@@ -1502,9 +1552,12 @@ class Engine:
         # Filter instances
         if self._repo_supports("query_profile_names"):
             try:
-                sql_params = self._build_sql_query_params(context, geofilter, fetch_one)
+                sql_params = self._build_sql_query_params(
+                    context, geofilter, fetch_one, universes=kwargs.get("universes")
+                )
                 names = self.primary_repository.query_profile_names(
                     universe_sl=sql_params["universe_sl"],
+                    universe_sls=sql_params["universe_sls"],
                     group_sl=sql_params["group_sl"],
                     group=sql_params["group"],
                     county_geoid=sql_params["county_geoid"],
@@ -1512,9 +1565,19 @@ class Engine:
                 )
                 dpi_instances = [self._lookup_dp(name) for name in names]
             except RuntimeError:
-                dpi_instances = self.context_filter(dpi_instances, context, geofilter)
+                dpi_instances = self.context_filter(
+                    dpi_instances,
+                    context,
+                    geofilter,
+                    universe_sls=self._parse_universes(kwargs.get("universes")),
+                )
         else:
-            dpi_instances = self.context_filter(dpi_instances, context, geofilter)
+            dpi_instances = self.context_filter(
+                dpi_instances,
+                context,
+                geofilter,
+                universe_sls=self._parse_universes(kwargs.get("universes")),
+            )
 
         if len(dpi_instances) == 0:
             raise ValueError("Sorry, no geographies match your criteria.")
@@ -1607,7 +1670,9 @@ class Engine:
 
         if self._repo_supports("query_profile_coordinates"):
             try:
-                sql_params = self._build_sql_query_params(context, geofilter, target_geo)
+                sql_params = self._build_sql_query_params(
+                    context, geofilter, target_geo, universes=kwargs.get("universes")
+                )
                 target_coords = (target_geo.rc["latitude"], target_geo.rc["longitude"])
                 target_lat, target_lon = target_coords
 
@@ -1629,6 +1694,7 @@ class Engine:
 
                     coords_rows = self.primary_repository.query_profile_coordinates(
                         universe_sl=sql_params["universe_sl"],
+                        universe_sls=sql_params["universe_sls"],
                         group_sl=sql_params["group_sl"],
                         group=sql_params["group"],
                         county_geoid=sql_params["county_geoid"],
@@ -1654,7 +1720,12 @@ class Engine:
         dpi_instances = d["demographicprofiles"]
 
         # Filter instances
-        dpi_instances = self.context_filter(dpi_instances, context, geofilter)
+        dpi_instances = self.context_filter(
+            dpi_instances,
+            context,
+            geofilter,
+            universe_sls=self._parse_universes(kwargs.get("universes")),
+        )
 
         # Get distances
         dp_distances = []

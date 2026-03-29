@@ -134,6 +134,7 @@ class SQLiteRepository(DataRepository):
         self,
         conn,
         universe_sl=None,
+        universe_sls=None,
         group_sl=None,
         group=None,
         county_geoid=None,
@@ -151,7 +152,11 @@ class SQLiteRepository(DataRepository):
             self._ensure_column(conn, "demographic_profiles", exclude_null_column)
             where.append(f"{exclude_null_column} IS NOT NULL")
 
-        if universe_sl:
+        if universe_sls:
+            placeholders = ", ".join(["?"] * len(universe_sls))
+            where.append(f"sumlevel IN ({placeholders})")
+            params.extend(universe_sls)
+        elif universe_sl:
             where.append("sumlevel = ?")
             params.append(universe_sl)
 
@@ -528,6 +533,7 @@ class SQLiteRepository(DataRepository):
     def list_geovectors(
         self,
         universe_sl=None,
+        universe_sls=None,
         group_sl=None,
         group=None,
         county_geoid=None,
@@ -538,7 +544,11 @@ class SQLiteRepository(DataRepository):
             where = []
             params = []
 
-            if universe_sl:
+            if universe_sls:
+                placeholders = ", ".join(["?"] * len(universe_sls))
+                where.append(f"sumlevel IN ({placeholders})")
+                params.extend(universe_sls)
+            elif universe_sl:
                 where.append("sumlevel = ?")
                 params.append(universe_sl)
 
@@ -655,6 +665,7 @@ class SQLiteRepository(DataRepository):
         self,
         comp_column,
         universe_sl=None,
+        universe_sls=None,
         group_sl=None,
         group=None,
         county_geoid=None,
@@ -672,6 +683,7 @@ class SQLiteRepository(DataRepository):
             where_sql, params = self._build_profile_where_sql(
                 conn,
                 universe_sl=universe_sl,
+                universe_sls=universe_sls,
                 group_sl=group_sl,
                 group=group,
                 county_geoid=county_geoid,
@@ -700,6 +712,7 @@ class SQLiteRepository(DataRepository):
     def query_profile_names(
         self,
         universe_sl=None,
+        universe_sls=None,
         group_sl=None,
         group=None,
         county_geoid=None,
@@ -711,6 +724,7 @@ class SQLiteRepository(DataRepository):
             where_sql, params = self._build_profile_where_sql(
                 conn,
                 universe_sl=universe_sl,
+                universe_sls=universe_sls,
                 group_sl=group_sl,
                 group=group,
                 county_geoid=county_geoid,
@@ -737,6 +751,7 @@ class SQLiteRepository(DataRepository):
     def query_profile_coordinates(
         self,
         universe_sl=None,
+        universe_sls=None,
         group_sl=None,
         group=None,
         county_geoid=None,
@@ -753,6 +768,7 @@ class SQLiteRepository(DataRepository):
             where_sql, params = self._build_profile_where_sql(
                 conn,
                 universe_sl=universe_sl,
+                universe_sls=universe_sls,
                 group_sl=group_sl,
                 group=group,
                 county_geoid=county_geoid,
@@ -795,6 +811,7 @@ class SQLiteRepository(DataRepository):
         self,
         comp_column,
         universe_sl=None,
+        universe_sls=None,
         group_sl=None,
         group=None,
         county_geoid=None,
@@ -807,6 +824,7 @@ class SQLiteRepository(DataRepository):
             where_sql, params = self._build_profile_where_sql(
                 conn,
                 universe_sl=universe_sl,
+                universe_sls=universe_sls,
                 group_sl=group_sl,
                 group=group,
                 county_geoid=county_geoid,

@@ -79,12 +79,15 @@ Used by:
 ```bash
 --scope SCOPE
 --universe UNIVERSE [--in-state ST | --in-county COUNTY | --in-zcta ZCTA]
+--universes UNIVERSE[,UNIVERSE...]
 ```
 
 Scope can be provided either as:
 
 - a compact scope string via `--scope`
 - explicit scope options via `--universe` plus at most one `--in-*` selector
+- explicit multi-universe options via `--universes` plus at most one `--in-*`
+  selector
 
 Compact scope forms:
 
@@ -121,7 +124,12 @@ Equivalent explicit scope examples:
 --universe counties --in-county 06075:county
 --universe counties --in-county "Los Angeles County, California"
 --universe zctas --in-zcta 94103
+--universes places,tracts
+--universes "Places,Census Tracts" --in-state California
+--universes All
 ```
+
+`--universe` and `--universes` are mutually exclusive.
 
 ## Filters
 

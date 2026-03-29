@@ -4,7 +4,7 @@
 
 - Project: `geocompare`
 - Branch: `master`
-- Version: `0.12.5`
+- Version: `0.13.0`
 
 ## Scope
 
@@ -32,6 +32,9 @@ remote access or lightweight deployments.
 - human-friendly numeric CLI arguments, including comma-separated values like `1,000,000`
 - explicit scope arguments such as `--in-state` now accept full state names as
   well as abbreviations
+- universe-scoped query commands now support multi-universe selection with
+  `--universes`, including friendly names like `Places,Census Tracts` and the
+  special value `All`
 - GeoVector similarity in two modes:
   - `similar` for broad demographic similarity
   - `similar-form` for built-form and housing similarity, with readable score

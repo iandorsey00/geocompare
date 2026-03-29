@@ -241,8 +241,9 @@ def test_engine_closest_geographies_uses_repository_before_loading_all_data():
             "Gamma city, California": gamma_profile,
         }[name]
     )
-    engine._build_sql_query_params = lambda context, geofilter, fetch_one: {
+    engine._build_sql_query_params = lambda context, geofilter, fetch_one, universes=None: {
         "universe_sl": "160",
+        "universe_sls": None,
         "group_sl": None,
         "group": None,
         "county_geoid": None,

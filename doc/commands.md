@@ -73,6 +73,7 @@ Street View success but does not guarantee imagery.
 ```bash
 geocompare query similar "Cupertino city, California" --universe places --in-state ny -n 15
 geocompare query similar-form "Sunnyvale city, California" --universe counties --in-state nj
+geocompare query similar "Mission Viejo city, California" --universes places,tracts -n 15
 ```
 
 `query similar` uses the standard demographic GeoVector.
@@ -86,12 +87,14 @@ median year built, median rooms, and average household size.
 ```bash
 geocompare query top per_capita_income --where "population>=50000" --universe places
 geocompare query bottom median_year_structure_built --universe places --in-state ny
+geocompare query top population --universes places,tracts -n 20
 ```
 
 ### Nearest
 
 ```bash
 geocompare query nearest "ZCTA5 94104" --universe places -n 15
+geocompare query nearest "ZCTA5 94104" --universes All -n 15
 ```
 
 ### Remoteness
@@ -101,6 +104,7 @@ geocompare query remoteness median_household_income 75000 --universe tracts --wh
 geocompare query remoteness per_capita_income 35000 --target above --scope "tracts+ca" -n 20
 geocompare query remoteness median_household_income 100000 --universe tracts --where "population_density>=2500" --county-population-min 1000000 --one-per-county
 geocompare query remoteness per_capita_income 40000 --universe places --where "population>=10000" --match-where "population>=1000"
+geocompare query remoteness per_capita_income 40000 --universes places,tracts --where "population>=10000"
 ```
 
 ### Local average
@@ -108,6 +112,7 @@ geocompare query remoteness per_capita_income 40000 --universe places --where "p
 ```bash
 geocompare query local-average median_household_income --universe tracts --neighbors 20 -n 20
 geocompare query local-average per_capita_income --scope "tracts+ca" --where "population_density>=2500" --county-population-min 1000000 --one-per-county
+geocompare query local-average median_household_income --universes "Places,Census Tracts" --neighbors 20 -n 20
 ```
 
 ### Distance
@@ -132,6 +137,7 @@ geocompare resolve "Springfield" --sumlevel 160 --format json
 ```bash
 geocompare export rows "population :income :housing" --universe places --where "population>=100000"
 geocompare export rows "population :race" --universe cbsas
+geocompare export rows "population :income" --universes places,tracts --where "population>=50000"
 ```
 
 ### Single profile

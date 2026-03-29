@@ -1,6 +1,7 @@
 import pytest
 
 from geocompare.tools.query_syntax import build_context, parse_geofilter
+from geocompare.tools.summary_level_parser import SummaryLevelParser
 
 
 def test_parse_geofilter_supports_word_operator_syntax():
@@ -48,3 +49,18 @@ def test_build_context_supports_us_as_state_group():
 def test_build_context_rejects_mixed_legacy_and_explicit_scope():
     with pytest.raises(ValueError):
         build_context(context="places+ca", universe="places")
+
+
+def test_summary_level_parser_parses_multiple_universes():
+    parser = SummaryLevelParser()
+    assert parser.parse_universes("place,tracts") == ["160", "140"]
+
+
+def test_summary_level_parser_parses_friendly_universe_names():
+    parser = SummaryLevelParser()
+    assert parser.parse_universes("Places, Census Tracts") == ["160", "140"]
+
+
+def test_summary_level_parser_parses_all_universes():
+    parser = SummaryLevelParser()
+    assert parser.parse_universes("All") == ["010", "050", "040", "140", "160", "310", "400", "860"]

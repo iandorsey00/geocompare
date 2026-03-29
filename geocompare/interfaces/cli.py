@@ -374,6 +374,10 @@ class GeoCompareCLI:
             "--universe",
             help="universe summary level (for example: tracts/places/counties or 140/160/050)",
         )
+        parser.add_argument(
+            "--universes",
+            help="comma-separated universes to query across (for example: places,tracts or All)",
+        )
         scope_group = parser.add_mutually_exclusive_group()
         scope_group.add_argument("--in-state", help="group scope by state abbreviation")
         scope_group.add_argument(
@@ -383,6 +387,8 @@ class GeoCompareCLI:
         scope_group.add_argument("--in-zcta", help="group scope by zcta (for example: 94103)")
 
     def _normalize_scope_args(self, args):
+        if getattr(args, "universe", None) and getattr(args, "universes", None):
+            raise ValueError("Use either --universe or --universes, not both.")
         args.context = build_context(
             context=getattr(args, "context", None),
             universe=getattr(args, "universe", None),
@@ -744,7 +750,11 @@ class GeoCompareCLI:
         print("-" * (id_width + 58))
 
     def compare_geovectors(self, args, mode="std"):
-        self._normalize_scope_args(args)
+        try:
+            self._normalize_scope_args(args)
+        except ValueError as exc:
+            self._eprint(str(exc))
+            return
         if mode == "form":
             mode = "app"
         closest_gvs = self.engine.compare_geovectors(**vars(args), mode=mode)
@@ -811,7 +821,11 @@ class GeoCompareCLI:
         self.compare_geovectors(args, mode="app")
 
     def extreme_values(self, args, lowest=False):
-        self._normalize_scope_args(args)
+        try:
+            self._normalize_scope_args(args)
+        except ValueError as exc:
+            self._eprint(str(exc))
+            return
         try:
             evs = self.engine.extreme_values(**vars(args), lowest=lowest)
         except ValueError as exc:
@@ -901,7 +915,11 @@ class GeoCompareCLI:
         self.extreme_values(args, lowest=True)
 
     def closest_geographies(self, args):
-        self._normalize_scope_args(args)
+        try:
+            self._normalize_scope_args(args)
+        except ValueError as exc:
+            self._eprint(str(exc))
+            return
         cgs = self.engine.closest_geographies(**vars(args))
         iam = " "
 
@@ -975,7 +993,11 @@ class GeoCompareCLI:
         print(self.engine.distance(**vars(args)))
 
     def remoteness(self, args):
-        self._normalize_scope_args(args)
+        try:
+            self._normalize_scope_args(args)
+        except ValueError as exc:
+            self._eprint(str(exc))
+            return
         if not args.context:
             args.context = "tracts+"
         try:
@@ -1095,7 +1117,11 @@ class GeoCompareCLI:
         print("-" * width)
 
     def local_average(self, args):
-        self._normalize_scope_args(args)
+        try:
+            self._normalize_scope_args(args)
+        except ValueError as exc:
+            self._eprint(str(exc))
+            return
         if not args.context:
             args.context = "tracts+"
         try:
@@ -1181,7 +1207,11 @@ class GeoCompareCLI:
         print("-" * width)
 
     def rows(self, args):
-        self._normalize_scope_args(args)
+        try:
+            self._normalize_scope_args(args)
+        except ValueError as exc:
+            self._eprint(str(exc))
+            return
         self.engine.rows(**vars(args))
 
     def get_csv_dp(self, args):
