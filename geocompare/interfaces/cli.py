@@ -754,43 +754,46 @@ class GeoCompareCLI:
             return
 
         comparison_gv = closest_gvs[0]
-        width = 117 if mode == "std" else 130
 
         if mode == "std":
             print("The most demographically similar geographies are:")
+            header = " ".join(
+                [
+                    " Geography".ljust(41),
+                    "County".ljust(20),
+                    "Population".rjust(11),
+                    "PDN",
+                    "PCI",
+                    "WHT",
+                    "BLK",
+                    "ASN",
+                    "HPL",
+                    "BDH",
+                    "GDH",
+                    " Distance",
+                ]
+            )
         else:
             print("The most similar geographies by built form are:")
+            header = " ".join(
+                [
+                    " Geography".ljust(41),
+                    "County".ljust(20),
+                    "Population".rjust(11),
+                    "PopD",
+                    "HouseD",
+                    "OWN",
+                    "Year",
+                    "Rooms",
+                    "HHSize",
+                    " Distance",
+                ]
+            )
         print()
-        print("-" * width)
-        if mode == "std":
-            print(
-                " Geography".ljust(41),
-                "County".ljust(20),
-                "Population".rjust(11),
-                "PDN",
-                "PCI",
-                "WHT",
-                "BLK",
-                "ASN",
-                "HPL",
-                "BDH",
-                "GDH",
-                " Distance",
-            )
-        else:
-            print(
-                " Geography".ljust(41),
-                "County".ljust(20),
-                "Population".rjust(11),
-                "PopD",
-                "HouseD",
-                "OWN",
-                "Year",
-                "Rooms",
-                "HHSize",
-                " Distance",
-            )
-        print("-" * width)
+        divider = "-" * len(header)
+        print(divider)
+        print(header)
+        print(divider)
 
         for closest_pv in closest_gvs:
             if args.official_labels and getattr(closest_pv, "sumlevel", None) == "140":
@@ -802,7 +805,7 @@ class GeoCompareCLI:
                 round(comparison_gv.distance(closest_pv, mode=mode), 2),
             )
 
-        print("-" * width)
+        print(divider)
 
     def compare_geovectors_form(self, args):
         self.compare_geovectors(args, mode="app")

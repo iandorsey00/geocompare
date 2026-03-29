@@ -4,7 +4,7 @@
 
 - Project: `geocompare`
 - Branch: `master`
-- Version: `0.12.1`
+- Version: `0.12.2`
 
 ## Scope
 
@@ -34,6 +34,8 @@ remote access or lightweight deployments.
   - `similar` for broad demographic similarity
   - `similar-form` for built-form and housing similarity, with readable score
     headers plus county and population context in CLI output
+  - GeoVector CLI tables now size dividers to the actual header width instead of
+    using oversized fixed separators
 - candidate-side and qualifying-side remoteness filtering
 - county-proxy filtering for large-county exploration
 - built-in `sources` command for ACS and base-overlay provenance
