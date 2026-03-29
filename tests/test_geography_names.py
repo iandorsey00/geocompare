@@ -25,6 +25,11 @@ def test_county_lookup_helpers_support_tracts():
     assert county_display_names(["06075"]) == ["San Francisco County"]
 
 
+def test_county_lookup_helpers_support_counties():
+    assert county_geoids_for_geography("0500000US06075", "050") == ["06075"]
+    assert county_display_names(["06075"]) == ["San Francisco County"]
+
+
 def test_compact_place_name_strips_census_suffix():
     assert compact_place_name("Pahrump CDP, Nevada") == "Pahrump"
 

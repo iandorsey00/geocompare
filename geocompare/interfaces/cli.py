@@ -754,7 +754,7 @@ class GeoCompareCLI:
             return
 
         comparison_gv = closest_gvs[0]
-        width = 105 if mode == "std" else 99
+        width = 117 if mode == "std" else 130
 
         if mode == "std":
             print("The most demographically similar geographies are:")
@@ -766,6 +766,7 @@ class GeoCompareCLI:
             print(
                 " Geography".ljust(41),
                 "County".ljust(20),
+                "Population".rjust(11),
                 "PDN",
                 "PCI",
                 "WHT",
@@ -780,12 +781,13 @@ class GeoCompareCLI:
             print(
                 " Geography".ljust(41),
                 "County".ljust(20),
-                "PDN",
-                "HDN",
+                "Population".rjust(11),
+                "PopD",
+                "HouseD",
                 "OWN",
-                "MYS",
-                "RMS",
-                "AHS",
+                "Year",
+                "Rooms",
+                "HHSize",
                 " Distance",
             )
         print("-" * width)

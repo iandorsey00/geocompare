@@ -1,7 +1,6 @@
 from geocompare.tools.county_lookup import CountyLookup
 from geocompare.tools.state_lookup import StateLookup
 
-
 _COUNTY_LOOKUP = CountyLookup()
 _STATE_LOOKUP = StateLookup()
 _PLACE_SUFFIXES = (
@@ -101,6 +100,8 @@ def county_geoids_for_geography(geoid, sumlevel):
 
     if sumlevel == "160":
         return list(_COUNTY_LOOKUP.place_to_counties.get(digits, []))
+    if sumlevel == "050" and len(digits) >= 5:
+        return [digits[:5]]
     if sumlevel == "140" and len(digits) >= 5:
         return [digits[:5]]
     return []

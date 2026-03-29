@@ -347,6 +347,7 @@ class GeoVector:
             out_str += ", ".join(self.counties_display).ljust(20)[:20] + iam
         else:
             out_str += " ".ljust(20)[:20] + iam
+        out_str += f"{parse_int(self.d['population']):,}".rjust(11) + iam
 
         # Print the subcomponent scores
         for comp in self.ws[mode].keys():

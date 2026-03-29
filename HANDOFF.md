@@ -4,7 +4,7 @@
 
 - Project: `geocompare`
 - Branch: `master`
-- Version: `0.12.0`
+- Version: `0.12.1`
 
 ## Scope
 
@@ -32,7 +32,8 @@ remote access or lightweight deployments.
 - human-friendly numeric CLI arguments, including comma-separated values like `1,000,000`
 - GeoVector similarity in two modes:
   - `similar` for broad demographic similarity
-  - `similar-form` for built-form and housing similarity
+  - `similar-form` for built-form and housing similarity, with readable score
+    headers plus county and population context in CLI output
 - candidate-side and qualifying-side remoteness filtering
 - county-proxy filtering for large-county exploration
 - built-in `sources` command for ACS and base-overlay provenance
