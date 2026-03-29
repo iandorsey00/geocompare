@@ -156,6 +156,19 @@ geocompare query top population --where "graduate_degree_or_higher>=150000" --un
 geocompare query remoteness median_household_income 100000 --universe tracts --where "population>=4000 population_density>=2500"
 ```
 
+## Numeric CLI values
+
+For numeric command arguments such as `-n`, `--population`, `--neighbors`,
+`--county-population-min`, and `--county-density-min`, comma separators are
+allowed.
+
+Examples:
+
+```bash
+geocompare query remoteness per_capita_income 40000 --universe places --county-population-min 1,000,000
+geocompare query local-average median_household_income --neighbors 1,500
+```
+
 When using shell metacharacters like `>` or `<`, quote the expression.
 
 ## Row count

@@ -4,7 +4,7 @@
 
 - Project: `geocompare`
 - Branch: `master`
-- Version: `0.11.0`
+- Version: `0.11.1`
 
 ## Scope
 
@@ -29,6 +29,7 @@ remote access or lightweight deployments.
   - `remoteness`
   - `local-average`
 - map-link generation for CLI-selected geographies, including road-biased Street View targeting when boundary data is available
+- human-friendly numeric CLI arguments, including comma-separated values like `1,000,000`
 - candidate-side and qualifying-side remoteness filtering
 - county-proxy filtering for large-county exploration
 - built-in `sources` command for ACS and base-overlay provenance

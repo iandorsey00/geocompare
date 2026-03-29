@@ -8,7 +8,22 @@ import sys
 from geocompare import __version__
 from geocompare.services.query_service import QueryService
 from geocompare.tools.map_links import profile_map_links
+from geocompare.tools.numeric import parse_float, parse_int
 from geocompare.tools.query_syntax import build_context
+
+
+def _parse_cli_int(value):
+    parsed = parse_int(value, default=None)
+    if parsed is None:
+        raise argparse.ArgumentTypeError(f"invalid integer value: {value}")
+    return parsed
+
+
+def _parse_cli_float(value):
+    parsed = parse_float(value, default=None)
+    if parsed is None:
+        raise argparse.ArgumentTypeError(f"invalid numeric value: {value}")
+    return parsed
 
 
 class GeoCompareCLI:
@@ -70,7 +85,9 @@ class GeoCompareCLI:
 
         search_parser = query_subparsers.add_parser("search", help="search geography names")
         search_parser.add_argument("query", help="search query")
-        search_parser.add_argument("-n", type=int, default=15, help="number of results to display")
+        search_parser.add_argument(
+            "-n", type=_parse_cli_int, default=15, help="number of results to display"
+        )
         search_parser.add_argument(
             "--format",
             choices=["table", "json", "csv"],
@@ -118,7 +135,9 @@ class GeoCompareCLI:
         similar_parser = query_subparsers.add_parser("similar", help="show nearest geovectors")
         similar_parser.add_argument("display_label", help="the exact geography name")
         self._add_context_args(similar_parser)
-        similar_parser.add_argument("-n", type=int, default=15, help="number of rows to display")
+        similar_parser.add_argument(
+            "-n", type=_parse_cli_int, default=15, help="number of rows to display"
+        )
         self._add_label_arg(similar_parser)
         similar_parser.set_defaults(func=self.compare_geovectors)
 
@@ -128,7 +147,7 @@ class GeoCompareCLI:
         similar_app_parser.add_argument("display_label", help="the exact geography name")
         self._add_context_args(similar_app_parser)
         similar_app_parser.add_argument(
-            "-n", type=int, default=15, help="number of rows to display"
+            "-n", type=_parse_cli_int, default=15, help="number of rows to display"
         )
         self._add_label_arg(similar_app_parser)
         similar_app_parser.set_defaults(func=self.compare_geovectors_app)
@@ -153,7 +172,9 @@ class GeoCompareCLI:
         nearest_parser.add_argument("display_label", help="the exact geography name")
         self._add_filter_arg(nearest_parser)
         self._add_context_args(nearest_parser)
-        nearest_parser.add_argument("-n", type=int, default=15, help="number of rows to display")
+        nearest_parser.add_argument(
+            "-n", type=_parse_cli_int, default=15, help="number of rows to display"
+        )
         self._add_label_arg(nearest_parser)
         nearest_parser.set_defaults(func=self.closest_geographies)
 
@@ -173,12 +194,12 @@ class GeoCompareCLI:
         )
         remoteness_parser.add_argument(
             "--county-population-min",
-            type=int,
+            type=_parse_cli_int,
             help="only include geographies whose containing county has at least this many residents",
         )
         remoteness_parser.add_argument(
             "--county-density-min",
-            type=float,
+            type=_parse_cli_float,
             help="only include geographies whose containing county has at least this population density",
         )
         remoteness_parser.add_argument(
@@ -201,7 +222,9 @@ class GeoCompareCLI:
             action="store_true",
             help="include land area in square miles",
         )
-        remoteness_parser.add_argument("-n", type=int, default=15, help="number of rows to display")
+        remoteness_parser.add_argument(
+            "-n", type=_parse_cli_int, default=15, help="number of rows to display"
+        )
         self._add_label_arg(remoteness_parser)
         remoteness_parser.set_defaults(func=self.remoteness)
 
@@ -214,18 +237,18 @@ class GeoCompareCLI:
         )
         local_average_parser.add_argument(
             "--neighbors",
-            type=int,
+            type=_parse_cli_int,
             default=20,
             help="number of nearest geographies to include in the local average",
         )
         local_average_parser.add_argument(
             "--county-population-min",
-            type=int,
+            type=_parse_cli_int,
             help="only include geographies whose containing county has at least this many residents",
         )
         local_average_parser.add_argument(
             "--county-density-min",
-            type=float,
+            type=_parse_cli_float,
             help="only include geographies whose containing county has at least this population density",
         )
         local_average_parser.add_argument(
@@ -242,7 +265,7 @@ class GeoCompareCLI:
             help="display neighborhood span in kilometers",
         )
         local_average_parser.add_argument(
-            "-n", type=int, default=15, help="number of rows to display"
+            "-n", type=_parse_cli_int, default=15, help="number of rows to display"
         )
         self._add_label_arg(local_average_parser)
         local_average_parser.set_defaults(func=self.local_average)
@@ -263,8 +286,12 @@ class GeoCompareCLI:
         resolve_parser.add_argument("query", help="input geography string to resolve")
         resolve_parser.add_argument("--state", help="optional state filter, e.g. ca")
         resolve_parser.add_argument("--sumlevel", help="optional summary level filter, e.g. 160")
-        resolve_parser.add_argument("--population", type=int, help="optional population hint")
-        resolve_parser.add_argument("-n", type=int, default=5, help="number of matches to return")
+        resolve_parser.add_argument(
+            "--population", type=_parse_cli_int, help="optional population hint"
+        )
+        resolve_parser.add_argument(
+            "-n", type=_parse_cli_int, default=5, help="number of matches to return"
+        )
         resolve_parser.add_argument(
             "--format",
             choices=["table", "json", "csv"],
@@ -291,7 +318,7 @@ class GeoCompareCLI:
         self._add_filter_arg(export_rows_parser)
         self._add_context_args(export_rows_parser)
         export_rows_parser.add_argument(
-            "-n", type=int, default=0, help="number of rows to display (0 = all)"
+            "-n", type=_parse_cli_int, default=0, help="number of rows to display (0 = all)"
         )
         export_rows_parser.set_defaults(func=self.rows)
 
@@ -319,7 +346,7 @@ class GeoCompareCLI:
         parser.add_argument("data_identifier", help="the data identifier you want to rank")
         self._add_filter_arg(parser)
         self._add_context_args(parser)
-        parser.add_argument("-n", type=int, default=15, help="number of rows to display")
+        parser.add_argument("-n", type=_parse_cli_int, default=15, help="number of rows to display")
 
     def _add_filter_arg(self, parser):
         parser.add_argument(
