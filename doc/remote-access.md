@@ -50,6 +50,20 @@ geocompare-api
 
 These endpoints are read-only and return JSON.
 
+Similarity API notes:
+
+- `similar` and `similar-form` support:
+  - `universe`
+  - `universes`
+  - `in_state`
+  - `in_county`
+  - `in_zcta`
+- `universe` and `universes` are mutually exclusive
+- use at most one of:
+  - `in_state`
+  - `in_county`
+  - `in_zcta`
+
 ## Deployment notes
 
 - A `systemd` example unit is provided at `deploy/geocompare-api.service`.

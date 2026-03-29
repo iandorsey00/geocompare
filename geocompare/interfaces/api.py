@@ -5,6 +5,7 @@ from pathlib import Path
 
 from geocompare.repository.sqlite_repository import SQLiteRepository
 from geocompare.services.query_service import QueryService
+from geocompare.tools.query_syntax import build_context
 
 
 def _optional_dependency_error(package_name):
@@ -159,10 +160,16 @@ def create_app():
             return HTTPException(status_code=404, detail=message)
         return HTTPException(status_code=400, detail=message)
 
-    def _validate_similarity_scope(universe, universes, where):
+    def _validate_similarity_scope(universe, universes, where, in_state, in_county, in_zcta):
         if universe and universes:
             raise HTTPException(
                 status_code=400, detail="Use either universe or universes, not both."
+            )
+        group_count = sum(bool(value) for value in [in_state, in_county, in_zcta])
+        if group_count > 1:
+            raise HTTPException(
+                status_code=400,
+                detail="Use at most one of in_state, in_county, or in_zcta.",
             )
         if where:
             raise HTTPException(
@@ -170,8 +177,16 @@ def create_app():
                 detail="where is not supported for similarity endpoints.",
             )
 
-    def _similarity_context(universe):
-        return f"{universe}+" if universe else ""
+    def _similarity_context(universe, in_state=None, in_county=None, in_zcta=None):
+        try:
+            return build_context(
+                universe=universe,
+                in_state=in_state,
+                in_county=in_county,
+                in_zcta=in_zcta,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
 
     def _similarity_response(name, mode, rows, official_labels=False):
         return {
@@ -237,16 +252,24 @@ def create_app():
         name: str,
         universe: str | None = None,
         universes: str | None = None,
+        in_state: str | None = None,
+        in_county: str | None = None,
+        in_zcta: str | None = None,
         where: str = "",
         n: int = Query(15, ge=1, le=100),
         official_labels: bool = False,
     ):
-        _validate_similarity_scope(universe, universes, where)
+        _validate_similarity_scope(universe, universes, where, in_state, in_county, in_zcta)
         service = get_service()
         try:
             rows = service.compare_geovectors(
                 display_label=name,
-                context=_similarity_context(universe),
+                context=_similarity_context(
+                    universe,
+                    in_state=in_state,
+                    in_county=in_county,
+                    in_zcta=in_zcta,
+                ),
                 universes=universes,
                 n=n,
                 mode="std",
@@ -266,16 +289,24 @@ def create_app():
         name: str,
         universe: str | None = None,
         universes: str | None = None,
+        in_state: str | None = None,
+        in_county: str | None = None,
+        in_zcta: str | None = None,
         where: str = "",
         n: int = Query(15, ge=1, le=100),
         official_labels: bool = False,
     ):
-        _validate_similarity_scope(universe, universes, where)
+        _validate_similarity_scope(universe, universes, where, in_state, in_county, in_zcta)
         service = get_service()
         try:
             rows = service.compare_geovectors(
                 display_label=name,
-                context=_similarity_context(universe),
+                context=_similarity_context(
+                    universe,
+                    in_state=in_state,
+                    in_county=in_county,
+                    in_zcta=in_zcta,
+                ),
                 universes=universes,
                 n=n,
                 mode="app",

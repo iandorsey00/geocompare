@@ -4,7 +4,7 @@
 
 - Project: `geocompare`
 - Branch: `master`
-- Version: `0.14.0`
+- Version: `0.14.1`
 
 ## Scope
 
@@ -53,6 +53,8 @@ remote access or lightweight deployments.
 - optional API via `geocompare-api`
   - API now exposes `similar` and `similar-form` endpoints for GeoCompare-Web
     and other lightweight clients
+  - similarity API endpoints now support real state/county/ZCTA scoping via
+    `universe`/`universes` plus `in_state` / `in_county` / `in_zcta`
 
 ## Data Model Notes
 

@@ -89,6 +89,50 @@ def test_similar_accepts_single_universe(monkeypatch):
     assert captured["universes"] is None
 
 
+def test_similar_accepts_universe_with_in_state(monkeypatch):
+    captured = {}
+
+    def compare_geovectors(**kwargs):
+        captured.update(kwargs)
+        return _build_similarity_rows("std")[:2]
+
+    client = _client(monkeypatch, compare_geovectors)
+    response = client.get(
+        "/similar",
+        params={
+            "name": "Mission Viejo city, California",
+            "universe": "places",
+            "in_state": "ca",
+            "n": 2,
+        },
+    )
+
+    assert response.status_code == 200
+    assert captured["context"] == "places+ca"
+
+
+def test_similar_accepts_universe_with_in_county(monkeypatch):
+    captured = {}
+
+    def compare_geovectors(**kwargs):
+        captured.update(kwargs)
+        return _build_similarity_rows("std")[:2]
+
+    client = _client(monkeypatch, compare_geovectors)
+    response = client.get(
+        "/similar",
+        params={
+            "name": "Mission Viejo city, California",
+            "universe": "places",
+            "in_county": "Orange County, California",
+            "n": 2,
+        },
+    )
+
+    assert response.status_code == 200
+    assert captured["context"] == "places+06059:county"
+
+
 def test_similar_accepts_multiple_universes(monkeypatch):
     captured = {}
 
@@ -106,6 +150,29 @@ def test_similar_accepts_multiple_universes(monkeypatch):
     assert captured["context"] == ""
     assert captured["universes"] == "places,tracts"
     assert response.json()["results"][2]["geography"]["sumlevel"] == "140"
+
+
+def test_similar_accepts_multiple_universes_with_in_state(monkeypatch):
+    captured = {}
+
+    def compare_geovectors(**kwargs):
+        captured.update(kwargs)
+        return _build_similarity_rows("std")
+
+    client = _client(monkeypatch, compare_geovectors)
+    response = client.get(
+        "/similar",
+        params={
+            "name": "Mission Viejo city, California",
+            "universes": "places,tracts",
+            "in_state": "California",
+            "n": 3,
+        },
+    )
+
+    assert response.status_code == 200
+    assert captured["context"] == "ca"
+    assert captured["universes"] == "places,tracts"
 
 
 def test_similar_form_uses_built_form_mode(monkeypatch):
@@ -126,6 +193,30 @@ def test_similar_form_uses_built_form_mode(monkeypatch):
     assert captured["mode"] == "app"
 
 
+def test_similar_form_accepts_county_scoping(monkeypatch):
+    captured = {}
+
+    def compare_geovectors(**kwargs):
+        captured.update(kwargs)
+        return _build_similarity_rows("app")[:2]
+
+    client = _client(monkeypatch, compare_geovectors)
+    response = client.get(
+        "/similar-form",
+        params={
+            "name": "Mission Viejo city, California",
+            "universes": "places,tracts",
+            "in_county": "Orange County, California",
+            "n": 2,
+        },
+    )
+
+    assert response.status_code == 200
+    assert captured["mode"] == "app"
+    assert captured["context"] == "06059:county"
+    assert captured["universes"] == "places,tracts"
+
+
 def test_similar_rejects_universe_and_universes_together(monkeypatch):
     client = _client(monkeypatch, lambda **kwargs: _build_similarity_rows("std"))
     response = client.get(
@@ -139,6 +230,21 @@ def test_similar_rejects_universe_and_universes_together(monkeypatch):
 
     assert response.status_code == 400
     assert response.json()["detail"] == "Use either universe or universes, not both."
+
+
+def test_similar_rejects_multiple_group_scopes(monkeypatch):
+    client = _client(monkeypatch, lambda **kwargs: _build_similarity_rows("std"))
+    response = client.get(
+        "/similar",
+        params={
+            "name": "Mission Viejo city, California",
+            "in_state": "ca",
+            "in_county": "Orange County, California",
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Use at most one of in_state, in_county, or in_zcta."
 
 
 def test_similar_honors_official_labels_for_tracts(monkeypatch):
