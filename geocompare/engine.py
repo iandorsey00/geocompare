@@ -618,9 +618,7 @@ class Engine:
 
         # Filter by group summary level
         if group_sl == "050":
-            key = "us:" + group + "/county"
-            county_name = self.kt.key_to_county_name[key]
-            county_geoid = self.ct.county_name_to_geoid[county_name]
+            county_geoid = self._get_county_geoid(group)
 
             instances = list(filter(lambda x: county_geoid in x.counties, instances))
         elif group_sl == "040":

@@ -4,7 +4,7 @@
 
 - Project: `geocompare`
 - Branch: `master`
-- Version: `0.12.2`
+- Version: `0.12.3`
 
 ## Scope
 
@@ -36,6 +36,8 @@ remote access or lightweight deployments.
     headers plus county and population context in CLI output
   - GeoVector CLI tables now size dividers to the actual header width instead of
     using oversized fixed separators
+  - GeoVector similarity queries now handle county scoping correctly with
+    `--in-county`
 - candidate-side and qualifying-side remoteness filtering
 - county-proxy filtering for large-county exploration
 - built-in `sources` command for ACS and base-overlay provenance

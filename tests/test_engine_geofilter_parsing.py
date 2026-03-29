@@ -1,6 +1,8 @@
 from types import SimpleNamespace
 
 from geocompare.engine import Engine
+from geocompare.tools.county_key_index import CountyKeyIndex
+from geocompare.tools.county_lookup import CountyLookup
 from geocompare.tools.summary_level_parser import SummaryLevelParser
 
 
@@ -38,3 +40,29 @@ def test_context_filter_accepts_symbol_operator():
     profiles = [_profile(50000), _profile(100000), _profile(150000)]
     filtered = engine.context_filter(profiles, context="", geofilter="population>=100000")
     assert [profile.rc["population"] for profile in filtered] == [100000, 150000]
+
+
+def test_context_filter_handles_county_group_for_geovector_style_instances():
+    engine = _engine_stub()
+    engine.kt = CountyKeyIndex()
+    engine.ct = CountyLookup()
+    profiles = [
+        SimpleNamespace(
+            sumlevel="160",
+            state="ca",
+            name="A",
+            counties=["06073"],
+            rc={"population": 1000},
+        ),
+        SimpleNamespace(
+            sumlevel="160",
+            state="ca",
+            name="B",
+            counties=["06059"],
+            rc={"population": 1000},
+        ),
+    ]
+
+    filtered = engine.context_filter(profiles, context="places+06073:county", geofilter="")
+
+    assert [profile.name for profile in filtered] == ["A"]
