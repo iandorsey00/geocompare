@@ -532,9 +532,15 @@ class Engine:
             return self._data_identifier_index[requested]
 
         explicit_compound_aliases = {
-            "poverty_rate_pct": ("population_below_poverty_level", "Population below poverty level (%)"),
+            "poverty_rate_pct": (
+                "population_below_poverty_level",
+                "Population below poverty level (%)",
+            ),
             "unemployment_rate_pct": ("unemployed_population", "Unemployment rate (%)"),
-            "homeownership_rate_pct": ("homeowner_occupied_housing_units", "Homeownership rate (%)"),
+            "homeownership_rate_pct": (
+                "homeowner_occupied_housing_units",
+                "Homeownership rate (%)",
+            ),
             "registered_voters_pct": ("registered_voters", "Registered voters (%)"),
             "democratic_voters_pct": ("democratic_voters", "Democratic voters (%)"),
             "republican_voters_pct": ("republican_voters", "Republican voters (%)"),
@@ -681,7 +687,7 @@ class Engine:
             key=lambda x: comparison_gv.distance(x, mode=mode),
         )
 
-    def compare_geovectors_app(self, display_label, context="", n=10):
+    def compare_geovectors_form(self, display_label, context="", n=10):
         return self.compare_geovectors(display_label, context=context, n=n, mode="app")
 
     def get_dp(self, display_label, **kwargs):

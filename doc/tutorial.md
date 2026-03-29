@@ -36,9 +36,13 @@ geocompare query profile "Fairfax County, Virginia"
 
 ```bash
 geocompare query similar "Fairfax County, Virginia"
+geocompare query similar-form "Fairfax County, Virginia"
 ```
 
 `query similar` uses `GeoVector` distance, not physical distance.
+
+`query similar-form` uses a built-form GeoVector that is intended to capture
+housing stock and neighborhood form rather than broad demographic composition.
 
 ## 5. Search when the label is uncertain
 

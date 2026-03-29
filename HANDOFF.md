@@ -4,7 +4,7 @@
 
 - Project: `geocompare`
 - Branch: `master`
-- Version: `0.11.1`
+- Version: `0.12.0`
 
 ## Scope
 
@@ -30,6 +30,9 @@ remote access or lightweight deployments.
   - `local-average`
 - map-link generation for CLI-selected geographies, including road-biased Street View targeting when boundary data is available
 - human-friendly numeric CLI arguments, including comma-separated values like `1,000,000`
+- GeoVector similarity in two modes:
+  - `similar` for broad demographic similarity
+  - `similar-form` for built-form and housing similarity
 - candidate-side and qualifying-side remoteness filtering
 - county-proxy filtering for large-county exploration
 - built-in `sources` command for ACS and base-overlay provenance
@@ -55,6 +58,8 @@ remote access or lightweight deployments.
   - `geocompare query search ...`
   - `geocompare query profile ...`
   - `geocompare query map-links ...`
+  - `geocompare query similar ...`
+  - `geocompare query similar-form ...`
   - `geocompare query remoteness ...`
   - `geocompare query local-average ...`
   - `geocompare sources`

@@ -1693,6 +1693,9 @@ class Database:
             "B15003_24",
             "B15003_25",
             "B19013_1",
+            "B25003_1",
+            "B25003_2",
+            "B25010_1",
             "B25018_1",
             "B25035_1",
             "B25058_1",
@@ -1757,7 +1760,7 @@ class Database:
                     "; ".join(geovector_failure_names[sample_count:]),
                 )
         self._progress(
-            f"Created geovectors: {len(self.geovectors):,} " f"(skipped: {geovector_failures:,})"
+            f"Created GeoVectors: {len(self.geovectors):,} " f"(skipped: {geovector_failures:,})"
         )
 
         self._humanize_tract_names()

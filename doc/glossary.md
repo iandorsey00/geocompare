@@ -29,7 +29,8 @@ unique across all summary levels.
 
 ## GeoVector
 
-A derived demographic vector used for similarity comparisons between geographies.
+A derived vector used for similarity comparisons between geographies. GeoCompare
+currently includes a standard demographic GeoVector and a built-form GeoVector.
 
 ## LOGRECNO
 

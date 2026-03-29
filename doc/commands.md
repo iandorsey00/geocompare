@@ -72,8 +72,14 @@ Street View success but does not guarantee imagery.
 
 ```bash
 geocompare query similar "Cupertino city, California" --universe places --in-state ny -n 15
-geocompare query similar-app "Sunnyvale city, California" --universe counties --in-state nj
+geocompare query similar-form "Sunnyvale city, California" --universe counties --in-state nj
 ```
+
+`query similar` uses the standard demographic GeoVector.
+
+`query similar-form` uses a built-form GeoVector that emphasizes housing and
+neighborhood form signals such as density, housing density, owner occupancy,
+median year built, median rooms, and average household size.
 
 ### Top / Bottom
 

@@ -132,7 +132,7 @@ class GeoCompareCLI:
         self._add_label_arg(profile_compare_parser)
         profile_compare_parser.set_defaults(func=self.profile_compare)
 
-        similar_parser = query_subparsers.add_parser("similar", help="show nearest geovectors")
+        similar_parser = query_subparsers.add_parser("similar", help="show nearest GeoVectors")
         similar_parser.add_argument("display_label", help="the exact geography name")
         self._add_context_args(similar_parser)
         similar_parser.add_argument(
@@ -141,16 +141,16 @@ class GeoCompareCLI:
         self._add_label_arg(similar_parser)
         similar_parser.set_defaults(func=self.compare_geovectors)
 
-        similar_app_parser = query_subparsers.add_parser(
-            "similar-app", help="show nearest geovectors (appearance mode)"
+        similar_form_parser = query_subparsers.add_parser(
+            "similar-form", help="show nearest GeoVectors (built-form mode)"
         )
-        similar_app_parser.add_argument("display_label", help="the exact geography name")
-        self._add_context_args(similar_app_parser)
-        similar_app_parser.add_argument(
+        similar_form_parser.add_argument("display_label", help="the exact geography name")
+        self._add_context_args(similar_form_parser)
+        similar_form_parser.add_argument(
             "-n", type=_parse_cli_int, default=15, help="number of rows to display"
         )
-        self._add_label_arg(similar_app_parser)
-        similar_app_parser.set_defaults(func=self.compare_geovectors_app)
+        self._add_label_arg(similar_form_parser)
+        similar_form_parser.set_defaults(func=self.compare_geovectors_form)
 
         top_parser = query_subparsers.add_parser(
             "top", help="show highest values by data identifier"
@@ -745,6 +745,8 @@ class GeoCompareCLI:
 
     def compare_geovectors(self, args, mode="std"):
         self._normalize_scope_args(args)
+        if mode == "form":
+            mode = "app"
         closest_gvs = self.engine.compare_geovectors(**vars(args), mode=mode)
 
         if len(closest_gvs) == 0:
@@ -752,9 +754,12 @@ class GeoCompareCLI:
             return
 
         comparison_gv = closest_gvs[0]
-        width = 105 if mode == "std" else 85
+        width = 105 if mode == "std" else 99
 
-        print("The most demographically similar geographies are:")
+        if mode == "std":
+            print("The most demographically similar geographies are:")
+        else:
+            print("The most similar geographies by built form are:")
         print()
         print("-" * width)
         if mode == "std":
@@ -772,7 +777,17 @@ class GeoCompareCLI:
                 " Distance",
             )
         else:
-            print(" Geography".ljust(41), "County".ljust(20), "PDN", "PCI", "MYS", " Distance")
+            print(
+                " Geography".ljust(41),
+                "County".ljust(20),
+                "PDN",
+                "HDN",
+                "OWN",
+                "MYS",
+                "RMS",
+                "AHS",
+                " Distance",
+            )
         print("-" * width)
 
         for closest_pv in closest_gvs:
@@ -787,7 +802,7 @@ class GeoCompareCLI:
 
         print("-" * width)
 
-    def compare_geovectors_app(self, args):
+    def compare_geovectors_form(self, args):
         self.compare_geovectors(args, mode="app")
 
     def extreme_values(self, args, lowest=False):
