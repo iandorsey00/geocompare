@@ -2,6 +2,7 @@ import re
 from typing import Dict, List, Optional
 
 from geocompare.tools.county_lookup import CountyLookup
+from geocompare.tools.state_lookup import StateLookup
 
 _VALID_OPERATOR_KEYS = {"gt", "gteq", "eq", "lteq", "lt"}
 _SYMBOL_TO_OPERATOR = {
@@ -13,16 +14,18 @@ _SYMBOL_TO_OPERATOR = {
 }
 
 _SYMBOL_FILTER_RE = re.compile(r"^\s*([A-Za-z_][A-Za-z0-9_]*)\s*(>=|<=|=|>|<)\s*(.+?)\s*$")
-_WORD_FILTER_RE = re.compile(
-    r"^\s*([A-Za-z_][A-Za-z0-9_]*)\s+(gt|gteq|eq|lteq|lt)\s+(.+?)\s*$"
-)
+_WORD_FILTER_RE = re.compile(r"^\s*([A-Za-z_][A-Za-z0-9_]*)\s+(gt|gteq|eq|lteq|lt)\s+(.+?)\s*$")
 _COUNTY_GEOID_RE = re.compile(r"^\d{5}:county$")
 _COUNTY_KEY_RE = re.compile(r"^[a-z]{2}:[a-z0-9]+$")
 _COUNTY_US_KEY_RE = re.compile(r"^us:[a-z]{2}:[a-z0-9]+/county$")
 
 _CT = CountyLookup()
+_ST = StateLookup()
 _COUNTY_NAME_TO_GEOID_LOWER = {
     county_name.lower(): geoid for county_name, geoid in _CT.county_name_to_geoid.items()
+}
+_STATE_NAME_TO_ABBREV_LOWER = {
+    state_name.lower(): abbrev.lower() for state_name, abbrev in _ST.name_to_abbrev.items()
 }
 
 
@@ -75,8 +78,7 @@ def _parse_single_filter(raw: str) -> Dict[str, Optional[str]]:
         }
 
     raise ValueError(
-        "filter: Invalid criteria. Use 'data_identifier>=value' "
-        "(operators: >,>=,=,<=,<)."
+        "filter: Invalid criteria. Use 'data_identifier>=value' " "(operators: >,>=,=,<=,<)."
     )
 
 
@@ -96,7 +98,7 @@ def build_context(
 
     group = None
     if in_state:
-        group = in_state.lower()
+        group = _normalize_in_state(in_state)
     elif in_county:
         group = _normalize_in_county(in_county)
     elif in_zcta:
@@ -111,6 +113,18 @@ def build_context(
     if group:
         return group
     return ""
+
+
+def _normalize_in_state(in_state: str) -> str:
+    raw = str(in_state or "").strip()
+    if not raw:
+        return raw
+
+    upper = raw.upper()
+    if upper in _ST.get_abbrevs(inc_us=True):
+        return upper.lower()
+
+    return _STATE_NAME_TO_ABBREV_LOWER.get(raw.lower(), raw.lower())
 
 
 def _normalize_in_county(in_county: str) -> str:

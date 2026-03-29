@@ -4,7 +4,7 @@
 
 - Project: `geocompare`
 - Branch: `master`
-- Version: `0.12.4`
+- Version: `0.12.5`
 
 ## Scope
 
@@ -30,6 +30,8 @@ remote access or lightweight deployments.
   - `local-average`
 - map-link generation for CLI-selected geographies, including road-biased Street View targeting when boundary data is available
 - human-friendly numeric CLI arguments, including comma-separated values like `1,000,000`
+- explicit scope arguments such as `--in-state` now accept full state names as
+  well as abbreviations
 - GeoVector similarity in two modes:
   - `similar` for broad demographic similarity
   - `similar-form` for built-form and housing similarity, with readable score

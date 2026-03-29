@@ -35,6 +35,16 @@ def test_build_context_supports_explicit_scope_args():
     assert context == "places+ca"
 
 
+def test_build_context_supports_full_state_name():
+    context = build_context(universe="places", in_state="Minnesota")
+    assert context == "places+mn"
+
+
+def test_build_context_supports_us_as_state_group():
+    context = build_context(universe="places", in_state="US")
+    assert context == "places+us"
+
+
 def test_build_context_rejects_mixed_legacy_and_explicit_scope():
     with pytest.raises(ValueError):
         build_context(context="places+ca", universe="places")
