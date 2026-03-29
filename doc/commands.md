@@ -63,7 +63,10 @@ geocompare query map-links "San Francisco city, California"
 - an Open in Google Maps URL
 - a Random Google Street View URL
 
-The first version uses the geography centroid and a randomized Street View heading.
+Street View targeting now prefers OSM road segment centers inside the geography
+boundary when boundary data is available. If that lookup fails, it falls back
+to a random boundary point, and then to the centroid. This improves the odds of
+Street View success but does not guarantee imagery.
 
 ### Similar
 

@@ -5,6 +5,7 @@ import pytest
 
 from geocompare.tools.map_links import (
     google_maps_url,
+    pick_street_view_point,
     profile_map_links,
     random_google_street_view_url,
 )
@@ -31,3 +32,56 @@ def test_profile_map_links_requires_coordinates():
 
     with pytest.raises(ValueError):
         profile_map_links(profile)
+
+
+def test_pick_street_view_point_prefers_osm_road_points_inside_boundary():
+    profile = SimpleNamespace(
+        rc={"latitude": 37.0, "longitude": -122.0},
+        boundary=[(0.0, 0.0), (0.0, 2.0), (2.0, 2.0), (2.0, 0.0)],
+    )
+
+    def requester(_query, _url, _timeout):
+        return {
+            "elements": [
+                {"center": {"lat": 1.5, "lon": 1.5}},
+                {"center": {"lat": 3.0, "lon": 3.0}},
+            ]
+        }
+
+    point, source = pick_street_view_point(profile, rng=random.Random(1), requester=requester)
+
+    assert point == (1.5, 1.5)
+    assert source == "road"
+
+
+def test_pick_street_view_point_falls_back_to_random_boundary_point_when_road_lookup_fails():
+    profile = SimpleNamespace(
+        rc={"latitude": 37.0, "longitude": -122.0},
+        boundary=[(0.0, 0.0), (0.0, 2.0), (2.0, 2.0), (2.0, 0.0)],
+    )
+
+    point, source = pick_street_view_point(
+        profile,
+        rng=random.Random(7),
+        requester=lambda *_args, **_kwargs: {"elements": []},
+    )
+
+    assert 0.0 <= point[0] <= 2.0
+    assert 0.0 <= point[1] <= 2.0
+    assert source == "boundary"
+
+
+def test_pick_street_view_point_falls_back_to_centroid_when_no_boundary_point_can_be_produced():
+    profile = SimpleNamespace(
+        rc={"latitude": 37.0, "longitude": -122.0},
+        boundary=[(1.0, 1.0), (1.0, 1.0), (1.0, 1.0)],
+    )
+
+    point, source = pick_street_view_point(
+        profile,
+        rng=random.Random(3),
+        requester=lambda *_args, **_kwargs: {"elements": []},
+    )
+
+    assert point == (37.0, -122.0)
+    assert source == "centroid"
