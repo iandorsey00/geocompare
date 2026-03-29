@@ -306,6 +306,8 @@ class SQLiteRepository(DataRepository):
                 name TEXT NOT NULL,
                 sumlevel TEXT NOT NULL,
                 state TEXT NOT NULL,
+                counties_geoids TEXT NOT NULL,
+                population REAL,
                 payload BLOB NOT NULL
             )
             """
@@ -313,19 +315,25 @@ class SQLiteRepository(DataRepository):
         conn.execute("CREATE INDEX idx_gv_name ON geovectors(name)")
         conn.execute("CREATE INDEX idx_gv_sumlevel ON geovectors(sumlevel)")
         conn.execute("CREATE INDEX idx_gv_state ON geovectors(state)")
+        conn.execute("CREATE INDEX idx_gv_population ON geovectors(population)")
 
         gv_rows = [
             (
                 gv.name,
                 gv.sumlevel,
                 gv.state,
+                f'|{"|".join(gv.counties)}|' if getattr(gv, "counties", None) else "",
+                self._normalize_value(getattr(gv, "d", {}).get("population")),
                 dump_payload(gv),
             )
             for gv in gvs
         ]
         if gv_rows:
             conn.executemany(
-                "INSERT INTO geovectors(name, sumlevel, state, payload) VALUES (?, ?, ?, ?)",
+                """
+                INSERT INTO geovectors(name, sumlevel, state, counties_geoids, population, payload)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
                 gv_rows,
             )
 
@@ -486,6 +494,87 @@ class SQLiteRepository(DataRepository):
             return None
 
         return load_payload(row[0])
+
+    def get_geovector(self, display_label):
+        conn = self._connect()
+        try:
+            columns = self._table_columns(conn, "geovectors")
+            order_sql = "population DESC, id ASC" if "population" in columns else "id ASC"
+            row = conn.execute(
+                f"""
+                SELECT payload
+                FROM geovectors
+                WHERE name = ?
+                ORDER BY {order_sql}
+                LIMIT 1
+                """,
+                (display_label,),
+            ).fetchone()
+        except sqlite3.Error as e:
+            raise RuntimeError(f"unexpected sqlite error while loading geovector: {e!r}")
+        finally:
+            conn.close()
+
+        if row is None:
+            return None
+
+        try:
+            return load_payload(row[0])
+        except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
+            raise RuntimeError(f"geovector payload is corrupted or incompatible: {self.path}")
+        except Exception as e:
+            raise RuntimeError(f"unexpected error loading sqlite geovector: {e!r}")
+
+    def list_geovectors(
+        self,
+        universe_sl=None,
+        group_sl=None,
+        group=None,
+        county_geoid=None,
+    ):
+        conn = self._connect()
+        try:
+            columns = self._table_columns(conn, "geovectors")
+            where = []
+            params = []
+
+            if universe_sl:
+                where.append("sumlevel = ?")
+                params.append(universe_sl)
+
+            if group_sl == "040":
+                where.append("state = ?")
+                params.append(group)
+
+            county_sql_filter = group_sl == "050" and county_geoid and "counties_geoids" in columns
+            if county_sql_filter:
+                where.append("counties_geoids LIKE ?")
+                params.append(f"%|{county_geoid}|%")
+
+            where_sql = "1 = 1" if not where else " AND ".join(where)
+            rows = conn.execute(
+                f"""
+                SELECT payload
+                FROM geovectors
+                WHERE {where_sql}
+                """,
+                params,
+            ).fetchall()
+        except sqlite3.Error as e:
+            raise RuntimeError(f"unexpected sqlite error while listing geovectors: {e!r}")
+        finally:
+            conn.close()
+
+        geovectors = [load_payload(row[0]) for row in rows]
+
+        if group_sl == "050" and county_geoid and not county_sql_filter:
+            geovectors = [
+                gv for gv in geovectors if county_geoid in (getattr(gv, "counties", None) or [])
+            ]
+        elif group_sl == "860":
+            geovectors = [gv for gv in geovectors if gv.name.startswith(f"ZCTA5 {group}")]
+
+        return geovectors
 
     def search_demographic_profiles(self, query, n):
         if n <= 0:

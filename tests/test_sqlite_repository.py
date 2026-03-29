@@ -29,10 +29,12 @@ class DummyProfile:
 
 
 class DummyGeoVector:
-    def __init__(self, name, state, sumlevel):
+    def __init__(self, name, state, sumlevel, counties=None, population=0):
         self.name = name
         self.state = state
         self.sumlevel = sumlevel
+        self.counties = counties or []
+        self.d = {"population": population}
 
 
 def _products():
@@ -42,8 +44,20 @@ def _products():
             DummyProfile("Beta city, California", "ca", "160", "16000US0602000", 2000),
         ],
         "geovectors": [
-            DummyGeoVector("Alpha city, California", "ca", "160"),
-            DummyGeoVector("Beta city, California", "ca", "160"),
+            DummyGeoVector(
+                "Alpha city, California",
+                "ca",
+                "160",
+                counties=["06001"],
+                population=1000,
+            ),
+            DummyGeoVector(
+                "Beta city, California",
+                "ca",
+                "160",
+                counties=["06073"],
+                population=2000,
+            ),
         ],
     }
 
@@ -118,6 +132,30 @@ def test_get_demographic_profile_by_geoid_returns_match(tmp_path):
     assert geoid[0] == "16000US0601000"
 
 
+def test_get_geovector_returns_match(tmp_path):
+    repo = SQLiteRepository(tmp_path / "test.sqlite")
+    repo.save_data_products(_products())
+
+    geovector = repo.get_geovector("Beta city, California")
+
+    assert geovector is not None
+    assert geovector.name == "Beta city, California"
+
+
+def test_list_geovectors_can_filter_by_county(tmp_path):
+    repo = SQLiteRepository(tmp_path / "test.sqlite")
+    repo.save_data_products(_products())
+
+    geovectors = repo.list_geovectors(
+        universe_sl="160",
+        group_sl="050",
+        group="06073:county",
+        county_geoid="06073",
+    )
+
+    assert [gv.name for gv in geovectors] == ["Beta city, California"]
+
+
 def test_engine_get_dp_uses_repository_before_loading_all_data():
     engine = Engine()
     engine.primary_repository = SimpleNamespace(
@@ -147,6 +185,41 @@ def test_engine_fetch_profile_by_geoid_uses_repository_before_loading_all_data()
     profile = engine._fetch_profile_by_geoid("16000US0601000")
     assert profile.name == "Alpha city, California"
     assert profile.geoid == "16000US0601000"
+
+
+def test_engine_compare_geovectors_uses_repository_before_loading_all_data():
+    engine = Engine()
+    target = SimpleNamespace(
+        name="Alpha city, California",
+        state="ca",
+        sumlevel="160",
+        counties=["06001"],
+        ws={"std": {"population_density": 10}, "app": {"population_density": 10}},
+        distance=lambda other, mode="std": 0 if other.name == "Alpha city, California" else 1,
+    )
+    beta = SimpleNamespace(
+        name="Beta city, California",
+        state="ca",
+        sumlevel="160",
+        counties=["06001"],
+        ws={"std": {"population_density": 12}, "app": {"population_density": 12}},
+        distance=lambda other, mode="std": 1,
+    )
+
+    engine.primary_repository = SimpleNamespace(
+        get_geovector=lambda name: target if name == "Alpha city, California" else None,
+        list_geovectors=lambda **kwargs: [target, beta],
+    )
+    engine._repo_supports = lambda method: method in {"get_geovector", "list_geovectors"}
+    engine.get_data_products = lambda: (_ for _ in ()).throw(
+        AssertionError("should not load all data")
+    )
+    engine.slt = SimpleNamespace(unpack_context=lambda context: ("160", None, None))
+    engine._gv_by_name = {}
+
+    geovectors = engine.compare_geovectors("Alpha city, California", context="places+")
+
+    assert [gv.name for gv in geovectors] == ["Alpha city, California", "Beta city, California"]
 
 
 def test_engine_closest_geographies_uses_repository_before_loading_all_data():

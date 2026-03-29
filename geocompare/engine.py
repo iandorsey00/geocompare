@@ -447,6 +447,21 @@ class Engine:
             raise ValueError(f"No geography found for display label: {display_label}")
         return gv
 
+    def _fetch_geovector_by_name(self, display_label):
+        gv = self._gv_by_name.get(display_label)
+        if gv is not None:
+            return gv
+
+        if self._repo_supports("get_geovector"):
+            try:
+                gv = self.primary_repository.get_geovector(display_label)
+                if gv is not None:
+                    return gv
+            except RuntimeError:
+                pass
+
+        return self._lookup_gv(display_label)
+
     def _identifier_probe_profile(self):
         if self.d is not None:
             demographicprofiles = self.d.get("demographicprofiles", [])
@@ -661,12 +676,26 @@ class Engine:
 
     def compare_geovectors(self, display_label, context="", n=10, mode="std", **kwargs):
         """Compare GeoVectors."""
-        d = self.get_data_products()
-
-        gv_list = d["geovectors"]
-
         # Obtain the GeoVector for which we entered a name.
-        comparison_gv = self._lookup_gv(display_label)
+        comparison_gv = self._fetch_geovector_by_name(display_label)
+
+        universe_sl, group_sl, group = self.slt.unpack_context(context)
+        county_geoid = self._get_county_geoid(group) if group_sl == "050" else None
+
+        if self._repo_supports("list_geovectors"):
+            try:
+                gv_list = self.primary_repository.list_geovectors(
+                    universe_sl=universe_sl or comparison_gv.sumlevel,
+                    group_sl=group_sl,
+                    group=group,
+                    county_geoid=county_geoid,
+                )
+            except RuntimeError:
+                d = self.get_data_products()
+                gv_list = d["geovectors"]
+        else:
+            d = self.get_data_products()
+            gv_list = d["geovectors"]
 
         # If a context was specified, filter GeoVector instances
         if context:

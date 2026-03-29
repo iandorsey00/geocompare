@@ -4,7 +4,7 @@
 
 - Project: `geocompare`
 - Branch: `master`
-- Version: `0.12.3`
+- Version: `0.12.4`
 
 ## Scope
 
@@ -38,6 +38,8 @@ remote access or lightweight deployments.
     using oversized fixed separators
   - GeoVector similarity queries now handle county scoping correctly with
     `--in-county`
+  - GeoVector similarity now prefers a SQLite-backed filtered fetch path, which
+    makes `similar` and `similar-form` much faster in scoped queries
 - candidate-side and qualifying-side remoteness filtering
 - county-proxy filtering for large-county exploration
 - built-in `sources` command for ACS and base-overlay provenance
