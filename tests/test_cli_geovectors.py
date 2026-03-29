@@ -48,6 +48,10 @@ def test_standard_geovector_divider_matches_header_width(capsys):
 
     assert set(divider) == {"-"}
     assert len(divider) == len(header)
+    assert "PopD" in header
+    assert "Inc" in header
+    assert "White" in header
+    assert "Grad+" in header
 
 
 def test_built_form_geovector_divider_matches_header_width(capsys):

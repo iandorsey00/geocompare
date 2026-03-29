@@ -4,7 +4,7 @@
 
 - Project: `geocompare`
 - Branch: `master`
-- Version: `0.13.0`
+- Version: `0.13.1`
 
 ## Scope
 
@@ -39,6 +39,8 @@ remote access or lightweight deployments.
   - `similar` for broad demographic similarity
   - `similar-form` for built-form and housing similarity, with readable score
     headers plus county and population context in CLI output
+  - the standard `similar` table now also uses readable short score headers
+    instead of older opaque abbreviations
   - GeoVector CLI tables now size dividers to the actual header width instead of
     using oversized fixed separators
   - GeoVector similarity queries now handle county scoping correctly with
