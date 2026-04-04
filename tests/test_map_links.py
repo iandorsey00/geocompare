@@ -43,14 +43,64 @@ def test_pick_street_view_point_prefers_osm_road_points_inside_boundary():
     def requester(_query, _url, _timeout):
         return {
             "elements": [
-                {"center": {"lat": 1.5, "lon": 1.5}},
-                {"center": {"lat": 3.0, "lon": 3.0}},
+                {"tags": {"highway": "primary"}, "center": {"lat": 1.5, "lon": 1.5}},
+                {"tags": {"highway": "primary"}, "center": {"lat": 3.0, "lon": 3.0}},
             ]
         }
 
     point, source = pick_street_view_point(profile, rng=random.Random(1), requester=requester)
 
     assert point == (1.5, 1.5)
+    assert source == "road"
+
+
+def test_pick_street_view_point_can_bias_to_arterials():
+    profile = SimpleNamespace(
+        rc={"latitude": 37.0, "longitude": -122.0},
+        boundary=[(0.0, 0.0), (0.0, 2.0), (2.0, 2.0), (2.0, 0.0)],
+    )
+
+    def requester(_query, _url, _timeout):
+        return {
+            "elements": [
+                {"tags": {"highway": "residential"}, "center": {"lat": 1.0, "lon": 1.0}},
+                {"tags": {"highway": "primary"}, "center": {"lat": 1.5, "lon": 1.5}},
+            ]
+        }
+
+    point, source = pick_street_view_point(
+        profile,
+        rng=random.Random(1),
+        requester=requester,
+        street_bias="arterials",
+    )
+
+    assert point == (1.5, 1.5)
+    assert source == "road"
+
+
+def test_pick_street_view_point_can_bias_to_local_streets():
+    profile = SimpleNamespace(
+        rc={"latitude": 37.0, "longitude": -122.0},
+        boundary=[(0.0, 0.0), (0.0, 2.0), (2.0, 2.0), (2.0, 0.0)],
+    )
+
+    def requester(_query, _url, _timeout):
+        return {
+            "elements": [
+                {"tags": {"highway": "primary"}, "center": {"lat": 1.5, "lon": 1.5}},
+                {"tags": {"highway": "tertiary"}, "center": {"lat": 1.0, "lon": 1.0}},
+            ]
+        }
+
+    point, source = pick_street_view_point(
+        profile,
+        rng=random.Random(1),
+        requester=requester,
+        street_bias="local-streets",
+    )
+
+    assert point == (1.0, 1.0)
     assert source == "road"
 
 

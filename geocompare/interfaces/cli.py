@@ -115,6 +115,12 @@ class GeoCompareCLI:
             "map-links", help="print Google Maps and Street View URLs for one geography"
         )
         map_links_parser.add_argument("display_label", help="the exact geography name")
+        map_links_parser.add_argument(
+            "--street-bias",
+            choices=["any-road", "arterials", "local-streets"],
+            default="any-road",
+            help="bias random Street View toward arterials or local streets",
+        )
         map_links_parser.set_defaults(func=self.map_links)
 
         profile_compare_parser = query_subparsers.add_parser(
@@ -550,7 +556,7 @@ class GeoCompareCLI:
             return
 
         try:
-            links = profile_map_links(dp)
+            links = profile_map_links(dp, street_bias=args.street_bias)
         except ValueError as exc:
             self._eprint(str(exc))
             return

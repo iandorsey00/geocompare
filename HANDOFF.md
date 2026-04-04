@@ -4,7 +4,7 @@
 
 - Project: `geocompare`
 - Branch: `master`
-- Version: `0.14.1`
+- Version: `0.14.2`
 
 ## Scope
 
@@ -29,6 +29,8 @@ remote access or lightweight deployments.
   - `remoteness`
   - `local-average`
 - map-link generation for CLI-selected geographies, including road-biased Street View targeting when boundary data is available
+  - `query map-links` now supports optional Street View road biasing for
+    `arterials` and `local-streets`
 - human-friendly numeric CLI arguments, including comma-separated values like `1,000,000`
 - explicit scope arguments such as `--in-state` now accept full state names as
   well as abbreviations

@@ -56,6 +56,7 @@ geocompare query profile "San Francisco city, California"
 geocompare query profile "San Francisco city, California" --profile-view compact
 geocompare query profile-compare "Mission Viejo city, California" "Carlsbad city, California"
 geocompare query map-links "San Francisco city, California"
+geocompare query map-links "San Francisco city, California" --street-bias arterials
 ```
 
 `query map-links` prints:
@@ -67,6 +68,13 @@ Street View targeting now prefers OSM road segment centers inside the geography
 boundary when boundary data is available. If that lookup fails, it falls back
 to a random boundary point, and then to the centroid. This improves the odds of
 Street View success but does not guarantee imagery.
+
+`--street-bias` can be used to prefer:
+
+- `arterials`
+  - OSM `primary` and `secondary` roads
+- `local-streets`
+  - OSM `tertiary` and lower road classes
 
 ### Similar
 

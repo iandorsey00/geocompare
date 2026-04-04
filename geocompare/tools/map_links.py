@@ -4,6 +4,17 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+ARTERIAL_HIGHWAY_TAGS = {"primary", "primary_link", "secondary", "secondary_link"}
+LOCAL_STREET_HIGHWAY_TAGS = {
+    "tertiary",
+    "tertiary_link",
+    "unclassified",
+    "residential",
+    "living_street",
+    "service",
+    "road",
+}
+
 
 def _format_lat_lon(latitude, longitude):
     return f"{float(latitude):.6f},{float(longitude):.6f}"
@@ -101,7 +112,17 @@ def _default_overpass_request(query, overpass_url, timeout):
         return response.read()
 
 
-def _osm_road_points_within_boundary(polygons, requester=None, timeout=12):
+def _highway_matches_street_bias(highway, street_bias):
+    if not highway:
+        return False
+    if street_bias == "arterials":
+        return highway in ARTERIAL_HIGHWAY_TAGS
+    if street_bias == "local-streets":
+        return highway in LOCAL_STREET_HIGHWAY_TAGS
+    return True
+
+
+def _osm_road_points_within_boundary(polygons, requester=None, timeout=12, street_bias="any-road"):
     if not polygons:
         return []
 
@@ -125,6 +146,9 @@ def _osm_road_points_within_boundary(polygons, requester=None, timeout=12):
     elements = payload.get("elements", []) if isinstance(payload, dict) else []
     points = []
     for element in elements:
+        highway = (element.get("tags") or {}).get("highway")
+        if not _highway_matches_street_bias(highway, street_bias):
+            continue
         center = element.get("center") or {}
         latitude = center.get("lat")
         longitude = center.get("lon")
@@ -157,7 +181,7 @@ def random_google_street_view_url(latitude, longitude, rng=None):
     return f"https://www.google.com/maps/@?{query}"
 
 
-def pick_street_view_point(profile, rng=None, requester=None):
+def pick_street_view_point(profile, rng=None, requester=None, street_bias="any-road"):
     latitude = getattr(profile, "rc", {}).get("latitude")
     longitude = getattr(profile, "rc", {}).get("longitude")
     if latitude is None or longitude is None:
@@ -168,7 +192,11 @@ def pick_street_view_point(profile, rng=None, requester=None):
     polygons = _extract_boundary_polygons(profile)
     generator = rng if rng is not None else random.Random()
     if polygons:
-        road_points = _osm_road_points_within_boundary(polygons, requester=requester)
+        road_points = _osm_road_points_within_boundary(
+            polygons,
+            requester=requester,
+            street_bias=street_bias,
+        )
         if road_points:
             return generator.choice(road_points), "road"
 
@@ -179,7 +207,7 @@ def pick_street_view_point(profile, rng=None, requester=None):
     return (float(latitude), float(longitude)), "centroid"
 
 
-def profile_map_links(profile, rng=None, requester=None):
+def profile_map_links(profile, rng=None, requester=None, street_bias="any-road"):
     latitude = getattr(profile, "rc", {}).get("latitude")
     longitude = getattr(profile, "rc", {}).get("longitude")
     if latitude is None or longitude is None:
@@ -191,6 +219,7 @@ def profile_map_links(profile, rng=None, requester=None):
         profile,
         rng=rng,
         requester=requester,
+        street_bias=street_bias,
     )
 
     return {
