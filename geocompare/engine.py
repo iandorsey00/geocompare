@@ -114,7 +114,9 @@ class Engine:
 
         # Write data products to SQLite.
         progress_with_elapsed("Writing products to SQLite")
-        self.primary_repository.save_data_products(products)
+        self.primary_repository.save_data_products(
+            products, progress_callback=progress_with_elapsed
+        )
 
         self._set_data_products(products)
         self.logger.info("Data product write completed.")

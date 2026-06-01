@@ -4,7 +4,7 @@
 
 - Project: `geocompare`
 - Branch: `master`
-- Version: `0.14.2`
+- Version: `0.15.0`
 
 ## Scope
 
@@ -22,6 +22,10 @@ remote access or lightweight deployments.
 
 - tract support throughout build, query, and identity resolution
 - human-friendly tract labels, with optional official Census tract labels
+- improved ZCTA humanization with better city-oriented heuristics
+- optional neighborhood reference support for tract/ZCTA display labels
+  - GeoCompare now ships with a small bundled seed layer for major U.S. cities
+  - local neighborhood GeoJSON can augment the bundled seed at build time
 - ranking queries such as:
   - `top`
   - `bottom`
@@ -57,12 +61,20 @@ remote access or lightweight deployments.
     and other lightweight clients
   - similarity API endpoints now support real state/county/ZCTA scoping via
     `universe`/`universes` plus `in_state` / `in_county` / `in_zcta`
+- build progress output is now more granular during:
+  - overlay application
+  - demographic profile creation
+  - GeoVector statistics and creation
+  - tract/ZCTA humanization
+  - SQLite save/rebuild stages
 
 ## Data Model Notes
 
 - Base profile metrics primarily come from ACS 5-year estimates.
 - Geography metadata such as land area and coordinates comes from Census
   Gazetteer files.
+- Neighborhood hints are an approximate optional display layer, not a canonical
+  Census-style geography system.
 - Built-in overlays:
   - `CRIME`
   - `VOTER REGISTRATION`

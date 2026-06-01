@@ -34,6 +34,10 @@ class SQLiteRepository(DataRepository):
     def _connect(self):
         return sqlite3.connect(str(self.path))
 
+    def _progress(self, progress_callback, message):
+        if progress_callback is not None:
+            progress_callback(message)
+
     def _initialize(self, conn):
         conn.execute(
             """
@@ -184,9 +188,13 @@ class SQLiteRepository(DataRepository):
         where_sql = "1 = 1" if not where else " AND ".join(where)
         return where_sql, params
 
-    def _rebuild_profile_tables(self, conn, data_products):
+    def _rebuild_profile_tables(self, conn, data_products, progress_callback=None):
         dps = data_products.get("demographicprofiles", [])
         gvs = data_products.get("geovectors", [])
+        self._progress(
+            progress_callback,
+            f"SQLite rebuild: shaping profile tables ({len(dps):,} profiles, {len(gvs):,} GeoVectors)",
+        )
 
         rc_keys = sorted({key for dp in dps for key in dp.rc.keys()})
         c_keys = sorted({key for dp in dps for key in dp.c.keys()})
@@ -282,6 +290,7 @@ class SQLiteRepository(DataRepository):
             rows.append(row)
 
         if rows:
+            self._progress(progress_callback, f"SQLite rebuild: writing {len(rows):,} profile rows")
             conn.executemany(insert_sql, rows)
 
         fts_rows = [
@@ -295,6 +304,7 @@ class SQLiteRepository(DataRepository):
             for index, dp in enumerate(dps)
         ]
         if fts_rows:
+            self._progress(progress_callback, "SQLite rebuild: refreshing profile search index")
             conn.executemany(
                 """
                 INSERT INTO demographic_profiles_fts(profile_id, name, canonical_name, geoid, counties_display)
@@ -334,6 +344,9 @@ class SQLiteRepository(DataRepository):
             for gv in gvs
         ]
         if gv_rows:
+            self._progress(
+                progress_callback, f"SQLite rebuild: writing {len(gv_rows):,} GeoVector rows"
+            )
             conn.executemany(
                 """
                 INSERT INTO geovectors(name, sumlevel, state, counties_geoids, population, payload)
@@ -342,15 +355,19 @@ class SQLiteRepository(DataRepository):
                 gv_rows,
             )
 
-    def save_data_products(self, data_products):
+    def save_data_products(self, data_products, progress_callback=None):
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._progress(progress_callback, "SQLite save: serializing data products")
         payload = dump_payload(data_products)
+        self._progress(progress_callback, "SQLite save: compressing data products")
         payload = _COMPRESSED_PAYLOAD_PREFIX + zlib.compress(payload, level=6)
         updated_at = datetime.now(timezone.utc).isoformat()
 
         conn = self._connect()
         try:
+            self._progress(progress_callback, "SQLite save: initializing schema")
             self._initialize(conn)
+            self._progress(progress_callback, "SQLite save: writing canonical payload")
             conn.execute(
                 """
                 INSERT INTO data_products (id, payload, updated_at)
@@ -361,7 +378,8 @@ class SQLiteRepository(DataRepository):
                 """,
                 (payload, updated_at),
             )
-            self._rebuild_profile_tables(conn, data_products)
+            self._rebuild_profile_tables(conn, data_products, progress_callback=progress_callback)
+            self._progress(progress_callback, "SQLite save: committing changes")
             conn.commit()
         finally:
             conn.close()

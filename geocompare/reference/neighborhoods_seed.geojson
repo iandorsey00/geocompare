@@ -1,0 +1,212 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {"name": "Upper West Side", "city": "New York city, New York", "state": "ny"},
+      "geometry": {"type": "Polygon", "coordinates": [[[-73.991, 40.771], [-73.972, 40.771], [-73.972, 40.802], [-73.991, 40.802], [-73.991, 40.771]]]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"name": "Upper East Side", "city": "New York city, New York", "state": "ny"},
+      "geometry": {"type": "Polygon", "coordinates": [[[-73.973, 40.764], [-73.946, 40.764], [-73.946, 40.792], [-73.973, 40.792], [-73.973, 40.764]]]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"name": "Harlem", "city": "New York city, New York", "state": "ny"},
+      "geometry": {"type": "Polygon", "coordinates": [[[-73.957, 40.798], [-73.934, 40.798], [-73.934, 40.829], [-73.957, 40.829], [-73.957, 40.798]]]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"name": "Williamsburg", "city": "New York city, New York", "state": "ny"},
+      "geometry": {"type": "Polygon", "coordinates": [[[-73.971, 40.699], [-73.943, 40.699], [-73.943, 40.724], [-73.971, 40.724], [-73.971, 40.699]]]}
+    },
+
+    {
+      "type": "Feature",
+      "properties": {"name": "Koreatown", "city": "Los Angeles city, California", "state": "ca"},
+      "geometry": {"type": "Polygon", "coordinates": [[[-118.311, 34.048], [-118.278, 34.048], [-118.278, 34.073], [-118.311, 34.073], [-118.311, 34.048]]]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"name": "Hollywood", "city": "Los Angeles city, California", "state": "ca"},
+      "geometry": {"type": "Polygon", "coordinates": [[[-118.349, 34.087], [-118.309, 34.087], [-118.309, 34.117], [-118.349, 34.117], [-118.349, 34.087]]]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"name": "Venice", "city": "Los Angeles city, California", "state": "ca"},
+      "geometry": {"type": "Polygon", "coordinates": [[[-118.483, 33.978], [-118.447, 33.978], [-118.447, 34.007], [-118.483, 34.007], [-118.483, 33.978]]]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"name": "Downtown Los Angeles", "city": "Los Angeles city, California", "state": "ca"},
+      "geometry": {"type": "Polygon", "coordinates": [[[-118.273, 34.029], [-118.235, 34.029], [-118.235, 34.064], [-118.273, 34.064], [-118.273, 34.029]]]}
+    },
+
+    {
+      "type": "Feature",
+      "properties": {"name": "The Loop", "city": "Chicago city, Illinois", "state": "il"},
+      "geometry": {"type": "Polygon", "coordinates": [[[-87.640, 41.870], [-87.620, 41.870], [-87.620, 41.892], [-87.640, 41.892], [-87.640, 41.870]]]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"name": "Lincoln Park", "city": "Chicago city, Illinois", "state": "il"},
+      "geometry": {"type": "Polygon", "coordinates": [[[-87.666, 41.910], [-87.632, 41.910], [-87.632, 41.939], [-87.666, 41.939], [-87.666, 41.910]]]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"name": "Hyde Park", "city": "Chicago city, Illinois", "state": "il"},
+      "geometry": {"type": "Polygon", "coordinates": [[[-87.610, 41.780], [-87.575, 41.780], [-87.575, 41.806], [-87.610, 41.806], [-87.610, 41.780]]]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"name": "Wicker Park", "city": "Chicago city, Illinois", "state": "il"},
+      "geometry": {"type": "Polygon", "coordinates": [[[-87.694, 41.899], [-87.668, 41.899], [-87.668, 41.913], [-87.694, 41.913], [-87.694, 41.899]]]}
+    },
+
+    {
+      "type": "Feature",
+      "properties": {"name": "Montrose", "city": "Houston city, Texas", "state": "tx"},
+      "geometry": {"type": "Polygon", "coordinates": [[[-95.405, 29.736], [-95.381, 29.736], [-95.381, 29.760], [-95.405, 29.760], [-95.405, 29.736]]]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"name": "The Heights", "city": "Houston city, Texas", "state": "tx"},
+      "geometry": {"type": "Polygon", "coordinates": [[[-95.415, 29.781], [-95.387, 29.781], [-95.387, 29.811], [-95.415, 29.811], [-95.415, 29.781]]]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"name": "Midtown", "city": "Houston city, Texas", "state": "tx"},
+      "geometry": {"type": "Polygon", "coordinates": [[[-95.382, 29.730], [-95.361, 29.730], [-95.361, 29.748], [-95.382, 29.748], [-95.382, 29.730]]]}
+    },
+
+    {
+      "type": "Feature",
+      "properties": {"name": "Arcadia", "city": "Phoenix city, Arizona", "state": "az"},
+      "geometry": {"type": "Polygon", "coordinates": [[[-111.988, 33.485], [-111.941, 33.485], [-111.941, 33.515], [-111.988, 33.515], [-111.988, 33.485]]]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"name": "Downtown Phoenix", "city": "Phoenix city, Arizona", "state": "az"},
+      "geometry": {"type": "Polygon", "coordinates": [[[-112.090, 33.436], [-112.055, 33.436], [-112.055, 33.461], [-112.090, 33.461], [-112.090, 33.436]]]}
+    },
+
+    {
+      "type": "Feature",
+      "properties": {"name": "Center City", "city": "Philadelphia city, Pennsylvania", "state": "pa"},
+      "geometry": {"type": "Polygon", "coordinates": [[[-75.182, 39.941], [-75.146, 39.941], [-75.146, 39.962], [-75.182, 39.962], [-75.182, 39.941]]]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"name": "Fishtown", "city": "Philadelphia city, Pennsylvania", "state": "pa"},
+      "geometry": {"type": "Polygon", "coordinates": [[[-75.148, 39.965], [-75.116, 39.965], [-75.116, 39.988], [-75.148, 39.988], [-75.148, 39.965]]]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"name": "University City", "city": "Philadelphia city, Pennsylvania", "state": "pa"},
+      "geometry": {"type": "Polygon", "coordinates": [[[-75.211, 39.943], [-75.182, 39.943], [-75.182, 39.969], [-75.211, 39.969], [-75.211, 39.943]]]}
+    },
+
+    {
+      "type": "Feature",
+      "properties": {"name": "Southtown", "city": "San Antonio city, Texas", "state": "tx"},
+      "geometry": {"type": "Polygon", "coordinates": [[[-98.507, 29.396], [-98.474, 29.396], [-98.474, 29.425], [-98.507, 29.425], [-98.507, 29.396]]]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"name": "Stone Oak", "city": "San Antonio city, Texas", "state": "tx"},
+      "geometry": {"type": "Polygon", "coordinates": [[[-98.516, 29.569], [-98.463, 29.569], [-98.463, 29.617], [-98.516, 29.617], [-98.516, 29.569]]]}
+    },
+
+    {
+      "type": "Feature",
+      "properties": {"name": "La Jolla", "city": "San Diego city, California", "state": "ca"},
+      "geometry": {"type": "Polygon", "coordinates": [[[-117.291, 32.823], [-117.240, 32.823], [-117.240, 32.871], [-117.291, 32.871], [-117.291, 32.823]]]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"name": "North Park", "city": "San Diego city, California", "state": "ca"},
+      "geometry": {"type": "Polygon", "coordinates": [[[-117.145, 32.733], [-117.116, 32.733], [-117.116, 32.756], [-117.145, 32.756], [-117.145, 32.733]]]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"name": "Pacific Beach", "city": "San Diego city, California", "state": "ca"},
+      "geometry": {"type": "Polygon", "coordinates": [[[-117.255, 32.783], [-117.220, 32.783], [-117.220, 32.810], [-117.255, 32.810], [-117.255, 32.783]]]}
+    },
+
+    {
+      "type": "Feature",
+      "properties": {"name": "Uptown", "city": "Dallas city, Texas", "state": "tx"},
+      "geometry": {"type": "Polygon", "coordinates": [[[-96.818, 32.790], [-96.789, 32.790], [-96.789, 32.813], [-96.818, 32.813], [-96.818, 32.790]]]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"name": "Deep Ellum", "city": "Dallas city, Texas", "state": "tx"},
+      "geometry": {"type": "Polygon", "coordinates": [[[-96.787, 32.776], [-96.763, 32.776], [-96.763, 32.790], [-96.787, 32.790], [-96.787, 32.776]]]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"name": "Bishop Arts District", "city": "Dallas city, Texas", "state": "tx"},
+      "geometry": {"type": "Polygon", "coordinates": [[[-96.837, 32.739], [-96.822, 32.739], [-96.822, 32.750], [-96.837, 32.750], [-96.837, 32.739]]]}
+    },
+
+    {
+      "type": "Feature",
+      "properties": {"name": "Downtown", "city": "Austin city, Texas", "state": "tx"},
+      "geometry": {"type": "Polygon", "coordinates": [[[-97.757, 30.257], [-97.736, 30.257], [-97.736, 30.277], [-97.757, 30.277], [-97.757, 30.257]]]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"name": "East Austin", "city": "Austin city, Texas", "state": "tx"},
+      "geometry": {"type": "Polygon", "coordinates": [[[-97.733, 30.255], [-97.700, 30.255], [-97.700, 30.285], [-97.733, 30.285], [-97.733, 30.255]]]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"name": "South Congress", "city": "Austin city, Texas", "state": "tx"},
+      "geometry": {"type": "Polygon", "coordinates": [[[-97.751, 30.240], [-97.735, 30.240], [-97.735, 30.256], [-97.751, 30.256], [-97.751, 30.240]]]}
+    },
+
+    {
+      "type": "Feature",
+      "properties": {"name": "Downtown San Jose", "city": "San Jose city, California", "state": "ca"},
+      "geometry": {"type": "Polygon", "coordinates": [[[-121.904, 37.325], [-121.871, 37.325], [-121.871, 37.347], [-121.904, 37.347], [-121.904, 37.325]]]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"name": "Willow Glen", "city": "San Jose city, California", "state": "ca"},
+      "geometry": {"type": "Polygon", "coordinates": [[[-121.917, 37.293], [-121.879, 37.293], [-121.879, 37.317], [-121.917, 37.317], [-121.917, 37.293]]]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"name": "Japantown", "city": "San Jose city, California", "state": "ca"},
+      "geometry": {"type": "Polygon", "coordinates": [[[-121.903, 37.345], [-121.882, 37.345], [-121.882, 37.360], [-121.903, 37.360], [-121.903, 37.345]]]}
+    },
+
+    {
+      "type": "Feature",
+      "properties": {"name": "Mission District", "city": "San Francisco city, California", "state": "ca"},
+      "geometry": {"type": "Polygon", "coordinates": [[[-122.431, 37.746], [-122.401, 37.746], [-122.401, 37.769], [-122.431, 37.769], [-122.431, 37.746]]]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"name": "SoMa", "city": "San Francisco city, California", "state": "ca"},
+      "geometry": {"type": "Polygon", "coordinates": [[[-122.407, 37.770], [-122.385, 37.770], [-122.385, 37.792], [-122.407, 37.792], [-122.407, 37.770]]]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"name": "Sunset District", "city": "San Francisco city, California", "state": "ca"},
+      "geometry": {"type": "Polygon", "coordinates": [[[-122.510, 37.744], [-122.470, 37.744], [-122.470, 37.769], [-122.510, 37.769], [-122.510, 37.744]]]}
+    },
+
+    {
+      "type": "Feature",
+      "properties": {"name": "Capitol Hill", "city": "Seattle city, Washington", "state": "wa"},
+      "geometry": {"type": "Polygon", "coordinates": [[[-122.329, 47.617], [-122.300, 47.617], [-122.300, 47.636], [-122.329, 47.636], [-122.329, 47.617]]]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"name": "Ballard", "city": "Seattle city, Washington", "state": "wa"},
+      "geometry": {"type": "Polygon", "coordinates": [[[-122.394, 47.658], [-122.360, 47.658], [-122.360, 47.685], [-122.394, 47.685], [-122.394, 47.658]]]}
+    }
+  ]
+}

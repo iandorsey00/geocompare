@@ -85,6 +85,17 @@ def test_roundtrip_load_products(tmp_path):
     assert len(loaded["geovectors"]) == 2
 
 
+def test_save_data_products_reports_progress(tmp_path):
+    repo = SQLiteRepository(tmp_path / "test.sqlite")
+    messages = []
+
+    repo.save_data_products(_products(), progress_callback=messages.append)
+
+    assert any("SQLite save: serializing data products" in message for message in messages)
+    assert any("SQLite rebuild: writing 2 profile rows" in message for message in messages)
+    assert any("SQLite save: committing changes" in message for message in messages)
+
+
 def test_get_demographic_profile_supports_compressed_payloads(tmp_path):
     repo = SQLiteRepository(tmp_path / "test.sqlite")
     repo.save_data_products(_products())

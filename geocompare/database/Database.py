@@ -15,7 +15,8 @@ import pandas as pd
 
 from geocompare.models.demographic_profile import DemographicProfile
 from geocompare.models.geovector import GeoVector
-from geocompare.tools.geography_names import humanized_tract_name
+from geocompare.tools.geography_names import humanized_tract_name, humanized_zcta_name
+from geocompare.tools.neighborhood_lookup import NeighborhoodLookup
 from geocompare.tools.numeric import parse_number
 from geocompare.tools.state_lookup import StateLookup
 
@@ -128,8 +129,11 @@ class Database:
             for county_geoid in getattr(dp, "counties", []):
                 county_places[county_geoid].append(dp)
 
+        tract_profiles = [dp for dp in self.demographicprofiles if dp.sumlevel == "140"]
+        total_tracts = len(tract_profiles)
         tract_aliases = {}
-        for dp in self.demographicprofiles:
+        for index, dp in enumerate(tract_profiles, start=1):
+            self._progress_every("Humanizing tract labels", index, total_tracts, step=2500)
             if dp.sumlevel != "140":
                 continue
             latitude = dp.rc.get("latitude")
@@ -155,11 +159,21 @@ class Database:
                     nearest_place = place
                     nearest_distance = distance
 
+            neighborhood_lookup = getattr(self, "neighborhood_lookup", NeighborhoodLookup([]))
+            neighborhood = neighborhood_lookup.match(
+                latitude,
+                longitude,
+                city_name=getattr(nearest_place, "name", None),
+                state_abbrev=dp.state,
+            )
+
             dp.canonical_name = dp.name
             dp.name = humanized_tract_name(
                 dp.geoid,
                 nearby_place_name=getattr(nearest_place, "name", None),
                 state_abbrev=dp.state,
+                neighborhood_name=neighborhood.get("name") if neighborhood else None,
+                city_name=neighborhood.get("city") if neighborhood else None,
             )
             tract_aliases[dp.geoid] = dp.name
 
@@ -168,6 +182,83 @@ class Database:
                 continue
             gv.canonical_name = gv.name
             gv.name = tract_aliases.get(gv.geoid, gv.name)
+
+    def _humanize_zcta_names(self):
+        place_profiles = []
+        for dp in self.demographicprofiles:
+            if dp.sumlevel != "160":
+                continue
+            latitude = dp.rc.get("latitude")
+            longitude = dp.rc.get("longitude")
+            if latitude is None or longitude is None:
+                continue
+            place_profiles.append(dp)
+
+        def choose_reference_place(latitude, longitude):
+            nearest_place = None
+            nearest_distance = None
+            scored_nearby_places = []
+
+            for place in place_profiles:
+                distance = self._haversine_miles(
+                    latitude,
+                    longitude,
+                    place.rc.get("latitude"),
+                    place.rc.get("longitude"),
+                )
+                if nearest_distance is None or distance < nearest_distance:
+                    nearest_place = place
+                    nearest_distance = distance
+
+                if distance <= 12.0:
+                    population = max(1.0, float(place.rc.get("population") or 0.0))
+                    # Prefer nearby large cities in urban counties, but keep the
+                    # radius bounded so distant principal cities do not dominate.
+                    score = pow(population, 0.85) / max(distance, 0.75)
+                    scored_nearby_places.append((score, population, -distance, place))
+
+            if scored_nearby_places:
+                scored_nearby_places.sort(reverse=True)
+                return scored_nearby_places[0][3]
+
+            return nearest_place
+
+        zcta_profiles = [dp for dp in self.demographicprofiles if dp.sumlevel == "860"]
+        total_zctas = len(zcta_profiles)
+        zcta_aliases = {}
+        for index, dp in enumerate(zcta_profiles, start=1):
+            self._progress_every("Humanizing ZCTA labels", index, total_zctas, step=2500)
+            if dp.sumlevel != "860":
+                continue
+            latitude = dp.rc.get("latitude")
+            longitude = dp.rc.get("longitude")
+            if latitude is None or longitude is None:
+                continue
+
+            reference_place = choose_reference_place(latitude, longitude)
+            neighborhood_lookup = getattr(self, "neighborhood_lookup", NeighborhoodLookup([]))
+            neighborhood = neighborhood_lookup.match(
+                latitude,
+                longitude,
+                city_name=getattr(reference_place, "name", None),
+                state_abbrev=getattr(reference_place, "state", None) or dp.state,
+            )
+
+            dp.canonical_name = dp.name
+            dp.name = humanized_zcta_name(
+                dp.geoid,
+                nearby_place_name=getattr(reference_place, "name", None),
+                state_abbrev=getattr(reference_place, "state", None),
+                neighborhood_name=neighborhood.get("name") if neighborhood else None,
+                city_name=neighborhood.get("city") if neighborhood else None,
+            )
+            zcta_aliases[dp.geoid] = dp.name
+
+        for gv in self.geovectors:
+            if gv.sumlevel != "860":
+                continue
+            gv.canonical_name = gv.name
+            gv.name = zcta_aliases.get(gv.geoid, gv.name)
 
     def _progress(self, message, current=None, total=None):
         cb = getattr(self, "_progress_callback", None)
@@ -178,6 +269,10 @@ class Database:
             cb(f"[{pct:3d}%] {message} ({current}/{total})")
         else:
             cb(message)
+
+    def _progress_every(self, message, current, total, step=5000):
+        if current == total or current == 1 or current % step == 0:
+            self._progress(message, current=current, total=total)
 
     def get_tm_columns(self, path):
         """Obtain columns for table_metadata"""
@@ -792,7 +887,9 @@ class Database:
         matched_profiles = set()
         metrics_added = 0
 
-        for storage_key, metrics in self.overlays.items():
+        total_overlay_geoids = len(self.overlays)
+        for index, (storage_key, metrics) in enumerate(self.overlays.items(), start=1):
+            self._progress_every("Applying overlays", index, total_overlay_geoids, step=1000)
             target_sumlevel = self._overlay_sumlevel(metrics)
             geoid = self._overlay_storage_geoid(storage_key)
             matches = {}
@@ -1259,6 +1356,7 @@ class Database:
                 f"({manifest_stats.get('metrics', 0)} metrics)"
             )
         self.overlays = self._load_overlays(self.data_dir)
+        self.neighborhood_lookup = NeighborhoodLookup.from_data_dir(self.data_dir)
         overlay_stats = getattr(self, "overlay_load_stats", {})
         loaded_files = overlay_stats.get("files_loaded", [])
         failed_files = overlay_stats.get("files_failed", [])
@@ -1273,6 +1371,11 @@ class Database:
             self._progress("No overlay files found (optional).")
         if failed_files:
             self._progress(f"Overlay files failed to load: {', '.join(failed_files)}")
+        if getattr(self.neighborhood_lookup, "neighborhoods", None):
+            self._progress(
+                f"Loaded neighborhood reference layer: "
+                f"{len(self.neighborhood_lookup.neighborhoods):,} polygons"
+            )
 
         self.st = StateLookup()
 
@@ -1322,6 +1425,7 @@ class Database:
 
         # Get rows from CSV
         rows = self.get_geo_csv_rows()
+        self._progress(f"Loaded raw geography rows: {len(rows):,}")
 
         # Filter for summary levels
         # 010 = United States
@@ -1384,14 +1488,17 @@ class Database:
         # Get rows for places (160) from CSV
         this_path = self.data_dir / f"{self.gh_year}_Gaz_place_national.txt"
         rows = self._read_gaz_rows(this_path)
+        self._progress(f"Loaded place gazetteer rows: {max(0, len(rows) - 1):,}")
 
         # Get rows for counties (050) from CSV
         this_path = self.data_dir / f"{self.gh_year}_Gaz_counties_national.txt"
         c_rows = self._read_gaz_rows(this_path)
+        self._progress(f"Loaded county gazetteer rows: {max(0, len(c_rows) - 1):,}")
 
         # Get rows for tracts (140) from CSV
         this_path = self.data_dir / f"{self.gh_year}_Gaz_tracts_national.txt"
         t_rows = self.normalize_tract_gazetteer_rows(self._read_gaz_rows(this_path))
+        self._progress(f"Loaded tract gazetteer rows: {max(0, len(t_rows) - 1):,}")
 
         # County geoheaders lack two columns that places have, so insert
         # them as empty strings.
@@ -1404,14 +1511,17 @@ class Database:
         # Get rows for states (040) from CSV
         this_path = self.get_state_gazetteer_path(self.gh_year, self.data_dir)
         s_rows = self._read_gaz_rows(this_path)
+        self._progress(f"Loaded state gazetteer rows: {max(0, len(s_rows) - 1):,}")
 
         # Get rows for Metro/micro areas (310) from CSV
         this_path = self.data_dir / f"{self.gh_year}_Gaz_cbsa_national.txt"
         cbsa_rows = self._read_gaz_rows(this_path)
+        self._progress(f"Loaded CBSA gazetteer rows: {max(0, len(cbsa_rows) - 1):,}")
 
         # Get rows for urban areas (400) from CSV
         this_path = self.data_dir / f"{self.gh_year}_Gaz_ua_national.txt"
         ua_rows = self._read_gaz_rows(this_path)
+        self._progress(f"Loaded urban area gazetteer rows: {max(0, len(ua_rows) - 1):,}")
 
         # Normalize state rows to match place schema:
         # USPS,GEOID,GEOIDFQ,NAME,ALAND,... -> insert ANSICODE, LSAD, FUNCSTAT
@@ -1445,6 +1555,7 @@ class Database:
         # Get rows for ZCTAs (860) from CSV
         this_path = self.data_dir / f"{self.gh_year}_Gaz_zcta_national.txt"
         z_rows = self._read_gaz_rows(this_path)
+        self._progress(f"Loaded ZCTA gazetteer rows: {max(0, len(z_rows) - 1):,}")
 
         # Normalize ZCTA rows to match place schema:
         # GEOID,GEOIDFQ,ALAND,... -> add USPS, ANSICODE, NAME, LSAD, FUNCSTAT
@@ -1651,7 +1762,9 @@ class Database:
         # Create a placeholder for DemographicProfiles
         self.demographicprofiles = []
 
-        for row in self.c.execute("SELECT * from geocompare_data"):
+        total_profiles = self.c.execute("SELECT COUNT(*) FROM geocompare_data").fetchone()[0]
+        for index, row in enumerate(self.c.execute("SELECT * from geocompare_data"), start=1):
+            self._progress_every("Creating demographic profiles", index, total_profiles, step=5000)
             try:
                 self.demographicprofiles.append(DemographicProfile(row))
             except AttributeError as e:
@@ -1702,7 +1815,8 @@ class Database:
             "B25077_1",
         ]
         rows = []
-        for row in self.c.execute("SELECT * from geocompare_data"):
+        for index, row in enumerate(self.c.execute("SELECT * from geocompare_data"), start=1):
+            self._progress_every("Preparing GeoVector statistics", index, total_profiles, step=5000)
             try:
                 rows.append([parse_number(row[column]) for column in metric_columns])
             except AttributeError:
@@ -1733,7 +1847,8 @@ class Database:
         geovector_failures = 0
         geovector_failure_names = []
 
-        for row in self.c.execute("SELECT * from geocompare_data"):
+        for index, row in enumerate(self.c.execute("SELECT * from geocompare_data"), start=1):
+            self._progress_every("Creating GeoVectors", index, total_profiles, step=5000)
             try:
                 # Construct a GeoVector and append it to self.geovectors.
                 self.geovectors.append(GeoVector(row, dict(medians), dict(standard_deviations)))
@@ -1764,6 +1879,7 @@ class Database:
         )
 
         self._humanize_tract_names()
+        self._humanize_zcta_names()
 
         # Debug output
         self.debug_output_list("geovectors")

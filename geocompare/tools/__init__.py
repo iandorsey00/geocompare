@@ -6,8 +6,10 @@ from geocompare.tools.geography_names import (
     county_geoids_for_geography,
     format_tract_code,
     humanized_tract_name,
+    humanized_zcta_name,
     tract_display_name_from_geoid,
 )
+from geocompare.tools.neighborhood_lookup import NeighborhoodLookup
 from geocompare.tools.numeric import parse_float, parse_int, parse_number, safe_divide
 from geocompare.tools.state_lookup import StateLookup
 from geocompare.tools.summary_level_parser import SummaryLevelParser
@@ -17,11 +19,13 @@ __all__ = [
     "CountyKeyIndex",
     "StateLookup",
     "SummaryLevelParser",
+    "NeighborhoodLookup",
     "compact_place_name",
     "county_geoids_for_geography",
     "county_display_names",
     "format_tract_code",
     "humanized_tract_name",
+    "humanized_zcta_name",
     "parse_number",
     "parse_int",
     "parse_float",

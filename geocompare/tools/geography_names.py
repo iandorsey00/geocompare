@@ -66,7 +66,13 @@ def compact_place_name(name):
     return text
 
 
-def humanized_tract_name(geoid, nearby_place_name=None, state_abbrev=None):
+def humanized_tract_name(
+    geoid,
+    nearby_place_name=None,
+    state_abbrev=None,
+    neighborhood_name=None,
+    city_name=None,
+):
     """Build a compact tract label aimed at human-readable table output."""
     raw = str(geoid or "").strip()
     suffix = raw.split("US", 1)[1] if "US" in raw else raw
@@ -82,13 +88,48 @@ def humanized_tract_name(geoid, nearby_place_name=None, state_abbrev=None):
     state_code = state_abbrev.upper() if state_abbrev else digits[:2]
 
     parts = [tract_label]
-    place_label = compact_place_name(nearby_place_name)
-    if place_label:
-        parts.append(f"near {place_label}")
-    if county_stem:
-        parts.append(county_stem)
+    neighborhood_label = str(neighborhood_name or "").strip()
+    city_label = compact_place_name(city_name or nearby_place_name)
+    if neighborhood_label:
+        parts.append(neighborhood_label)
+        if city_label and city_label.lower() != neighborhood_label.lower():
+            parts.append(city_label)
+    else:
+        if city_label:
+            parts.append(f"near {city_label}")
+        if county_stem:
+            parts.append(county_stem)
     if state_code:
         parts.append(state_code)
+    return ", ".join(parts)
+
+
+def humanized_zcta_name(
+    geoid,
+    nearby_place_name=None,
+    state_abbrev=None,
+    neighborhood_name=None,
+    city_name=None,
+):
+    """Build a compact ZCTA label with approximate place and state context."""
+    raw = str(geoid or "").strip()
+    suffix = raw.split("US", 1)[1] if "US" in raw else raw
+    digits = "".join(ch for ch in suffix if ch.isdigit())
+    if len(digits) < 5:
+        return raw
+
+    zcta = digits[:5]
+    parts = [f"ZCTA5 {zcta}"]
+    neighborhood_label = str(neighborhood_name or "").strip()
+    city_label = compact_place_name(city_name or nearby_place_name)
+    if neighborhood_label:
+        parts.append(neighborhood_label)
+        if city_label and city_label.lower() != neighborhood_label.lower():
+            parts.append(city_label)
+    elif city_label:
+        parts.append(f"{city_label} area")
+    if state_abbrev:
+        parts.append(state_abbrev.upper())
     return ", ".join(parts)
 
 

@@ -4,11 +4,18 @@ GeoCompare supports two overlay types:
 
 - built-in overlays: canonical crime and voter files
 - custom overlays: private or user-defined metrics
+- optional reference layers: non-canonical display helpers such as neighborhoods
 
 Overlay files live under:
 
 ```text
 <data_dir>/overlays/
+```
+
+Optional reference layers live under:
+
+```text
+<data_dir>/reference/
 ```
 
 Canonical filenames:
@@ -90,6 +97,64 @@ Example:
 
 `overlay_manifest.json` is optional, but recommended for stable naming, labels,
 and section placement.
+
+## Neighborhood reference layer
+
+GeoCompare can optionally load a neighborhood reference file for better
+human-facing tract and ZCTA labels inside large cities.
+
+GeoCompare also ships with a small bundled seed layer for several major U.S.
+cities. Local files augment that bundled seed rather than replacing it.
+
+Supported paths:
+
+- `reference/neighborhoods.geojson`
+- `reference/neighborhoods.json`
+
+Expected format:
+
+- GeoJSON `FeatureCollection`
+- `Polygon` or `MultiPolygon` features
+- properties:
+  - `name` required
+  - `city` optional but recommended
+  - `state` optional but recommended
+
+Example:
+
+```json
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Koreatown",
+        "city": "Los Angeles city, California",
+        "state": "ca"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-118.31, 34.05],
+          [-118.27, 34.05],
+          [-118.27, 34.08],
+          [-118.31, 34.08],
+          [-118.31, 34.05]
+        ]]
+      }
+    }
+  ]
+}
+```
+
+Notes:
+
+- This is an approximate display layer, not a canonical Census geography.
+- GeoCompare uses centroid-in-polygon matching for tract and ZCTA labeling when
+  a neighborhood file is present.
+- Neighborhood labels are best treated as source-dependent hints, especially in
+  cities where neighborhood boundaries are informal or disputed.
 
 ## Base-only rebuild
 
