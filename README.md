@@ -3,6 +3,11 @@
 GeoCompare is a CLI for building and querying standardized local demographic
 data products from public datasets, without manual data-file editing.
 
+![GeoCompare remoteness query ranking cities by distance from a demographic threshold](docs/portfolio/screenshots/01-remoteness-workflow.png)
+
+A remoteness query combines demographic thresholds with geographic distance.
+[Reproduce this capture](docs/portfolio/README.md).
+
 Documentation: [doc/index.md](doc/index.md).
 Architecture details: [doc/architecture.md](doc/architecture.md).
 Versioning policy: [doc/versioning.md](doc/versioning.md).

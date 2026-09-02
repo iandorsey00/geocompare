@@ -147,6 +147,7 @@ scripts/*
 !scripts/fetch_latest_acs.py
 !scripts/fetch_overlays.py
 !scripts/build_nibrs_crime_overlay.py
+!scripts/capture_portfolio.py
 
 # Local overlay inputs (crime/project data)
 /overlays/*

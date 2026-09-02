@@ -20,6 +20,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+portfolio = [
+  "Pillow>=10,<13",
+]
 dev = [
   "pytest>=8.0.0",
   "ruff>=0.6.0",

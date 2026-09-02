@@ -105,10 +105,13 @@ Primary docs live under [`doc/`](./doc/index.md), especially:
 - [Argument Types](./doc/argument-types.md)
 - [Overlays](./doc/overlays.md)
 - [Remote Access](./doc/remote-access.md)
+- [Portfolio Capture](./docs/portfolio/README.md): repeatable public-metric CLI
+  images for the README and repository social preview; uses the optional
+  `portfolio` dependency group and does not require deployment or a rebuild.
 
 ## Validation
 
-Useful checks before ACP:
+Useful checks before a release:
 
 1. `ruff check tests geocompare`
 2. `black --check tests geocompare`
